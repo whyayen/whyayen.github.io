@@ -20,14 +20,19 @@ jobs:
           persist-credentials: false
 
       # Runs a single command using the runners shell
-      - name: Install and Build 🔧
+      - name: Install 🔧
         uses: borales/actions-yarn@v2.0.0
         env:
           GA_ID: ${{ secrets.GA_ID }}
         with:
-          cmd: |
-            install
-            run build
+          cmd: install
+
+      - name: Build 🔧
+        uses: borales/actions-yarn@v2.0.0
+        env:
+          GA_ID: ${{ secrets.GA_ID }}
+        with:
+          cmd: build
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@3.7.1
