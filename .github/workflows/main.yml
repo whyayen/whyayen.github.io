@@ -27,7 +27,7 @@ jobs:
         with:
           cmd: |
             install
-            build
+            run build
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@3.7.1
