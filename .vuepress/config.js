@@ -34,6 +34,11 @@ module.exports = {
             "text": "GitHub",
             "link": "https://github.com/whyayen",
             "icon": "reco-github"
+          },
+          {
+            "text": "Medium",
+            "link": "https://medium.com/@wannabearapper",
+            "icon": "reco-blog"
           }
         ]
       }
