@@ -21,9 +21,11 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Install and Build 🔧
+        env:
+          GA_ID: ${{ secrets.GA_ID }}
         run: |
           npm install
-          GA_ID=${{ secrets.GA_ID }} npm run build
+          npm run build
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@3.7.1
