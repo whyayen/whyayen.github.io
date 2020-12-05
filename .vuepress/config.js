@@ -9,19 +9,7 @@ module.exports = {
         "name": "viewport",
         "content": "width=device-width,initial-scale=1,user-scalable=no"
       }
-    ],
-    [
-      "script",
-      {
-        "src": "https://www.googletagmanager.com/gtag/js?id=G-CGVNTPGBXH"
-      }
-    ],
-    [
-      "script",
-      {
-        "src": "/scripts/gtag.js"
-      }
-    ],
+    ]
   ],
   "theme": "reco",
   "themeConfig": {
@@ -73,13 +61,5 @@ module.exports = {
   },
   "markdown": {
     "lineNumbers": true
-  },
-  "plugins": [
-    [
-      "@vuepress/google-analytics",
-      {
-        "ga": process.env.GA_ID || ""
-      }
-    ]
-  ]
+  }
 }
