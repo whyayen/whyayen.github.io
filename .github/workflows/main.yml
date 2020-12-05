@@ -22,15 +22,11 @@ jobs:
       # Runs a single command using the runners shell
       - name: Install 🔧
         uses: borales/actions-yarn@v2.0.0
-        env:
-          GA_ID: ${{ secrets.GA_ID }}
         with:
           cmd: install
 
       - name: Build 🔧
         uses: borales/actions-yarn@v2.0.0
-        env:
-          GA_ID: ${{ secrets.GA_ID }}
         with:
           cmd: build
 
