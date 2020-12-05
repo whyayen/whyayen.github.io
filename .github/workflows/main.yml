@@ -21,11 +21,13 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Install and Build 🔧
+        uses: borales/actions-yarn@v2.0.0
         env:
           GA_ID: ${{ secrets.GA_ID }}
-        run: |
-          npm install
-          npm run build
+        with:
+          cmd: |
+            install
+            build
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@3.7.1
