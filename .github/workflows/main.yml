@@ -21,6 +21,8 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Install and Build 🔧
+        env:
+          GA_ID: ${{ secrets.GA_ID }}
         run: |
           npm install
           npm run build
