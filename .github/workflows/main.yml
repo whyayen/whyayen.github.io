@@ -23,6 +23,7 @@ jobs:
       - name: Install and Build 🔧
         env:
           GA_ID: ${{ secrets.GA_ID }}
+          TITLE: ${{ secret.title }}
         run: |
           npm install
           npm run build

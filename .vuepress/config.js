@@ -1,5 +1,5 @@
 module.exports = {
-  "title": "Jayuen",
+  "title": process.env.TITLE || "Jayuen",
   "description": "紀錄一些關於工作或開發上遇到的問題",
   "dest": "public",
   "head": [
