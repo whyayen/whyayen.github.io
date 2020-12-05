@@ -19,7 +19,7 @@ module.exports = {
     [
       "script",
       {
-        "src": "scripts/gtag.js"
+        "src": "/scripts/gtag.js"
       }
     ],
   ],
