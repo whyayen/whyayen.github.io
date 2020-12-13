@@ -151,8 +151,8 @@ def compute_checksum_in_chunks(io)
 end
 
 def create_blob(s3_key)
-  s3 = Aws::S3::Client.new(region: CloudConvert.config.s3[:region])
-  converted_file = s3.get_object({bucket: CloudConvert.config.s3[:bucket], key: s3_key})
+  s3 = Aws::S3::Client.new(region: 'us-west-1')
+  converted_file = s3.get_object({bucket: 'example-bucket', key: s3_key})
 
   blob_params = {
     filename: "change_your_filename.pdf",
