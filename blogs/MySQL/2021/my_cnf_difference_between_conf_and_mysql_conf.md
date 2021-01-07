@@ -47,7 +47,7 @@ mysql.cnf
 以及這個答案的第一個 comment：
 > Thanks for your reply. So I understand that /etc/mysql/mysql.conf.d is there just for retrocompatibility and /etc/mysql/conf.d is the way to go, right?
 
-在經過我自己的一些測試後，發現 `mysql.conf.d` 資料夾是在 `5.7` 版本才出現的，我起兩台全新的 Ubuntu 14.04 Server，分別安裝 MySQL `5.5` 跟 `5.6`，`/etc/mysql` 下只有 `conf.d` 資料夾，並沒有 `mysql.conf.d`，再在起一台 Ubuntu 18.04 Server 安裝 MySQL `5.7` 才出現 `mysql.conf.d`。
+在經過我自己的一些測試後，發現 `mysql.conf.d` 資料夾是在 `5.7` 版本才出現的，我起兩台全新的 Ubuntu 14.04 Server，分別安裝 MySQL `5.5` 跟 `5.6`，`/etc/mysql` 下只有 `conf.d` 資料夾，並沒有 `mysql.conf.d`，再起一台 Ubuntu 18.04 Server 安裝 MySQL `5.7` 才出現 `mysql.conf.d`。
 
 另外在 [MySQL 5.7 Reference Manual - 2.5.10 Managing MySQL Server with systemd](https://dev.mysql.com/doc/refman/5.7/en/using-systemd.html) 文件有提到
 > To use multiple-instance capability, modify the my.cnf option file to include configuration of key options for each instance. These file locations are typical:
