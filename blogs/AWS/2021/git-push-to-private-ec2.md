@@ -110,3 +110,5 @@ To 192.168.0.34:/home/git/beancount.git
 
 ## 參考資料
 - [Pro Git](https://git-scm.com/book/en/v2/Git-on-the-Server-Setting-Up-the-Server)
+- [git clone issues via an SSH proxied host](https://stackoverflow.com/questions/32654857/git-clone-issues-via-an-ssh-proxied-host?fbclid=IwAR3SvXOobzGk14H8nc3Mxc_Er5Tiz6wC6izz2AtNiakBpV2DpHCs97l5idk)
+- [SSH ProxyCommand example: Going through one host to reach another server](https://www.cyberciti.biz/faq/linux-unix-ssh-proxycommand-passing-through-one-host-gateway-server/)
