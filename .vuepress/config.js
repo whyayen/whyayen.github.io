@@ -11,7 +11,7 @@ module.exports = {
       }
     ],
     [
-      "meta"
+      "meta",
       {
         "name": "google-site-verification",
         "content": "kWqBrWikTRDwDaEFKmjuwuEqG9EUmtlb-9UMUWvuWGo"
