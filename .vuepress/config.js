@@ -73,6 +73,12 @@ module.exports = {
       {
         "site_url": "https://whyayen.github.io" 
       }
+    ],
+    [
+      "sitemap",
+      {
+        "hostname": "https://whyayen.github.io"
+      }
     ]
   ]
 }
