@@ -79,6 +79,12 @@ module.exports = {
       {
         "hostname": "https://whyayen.github.io"
       }
+    ],
+    [
+      "vuepress-plugin-google-tag-manager",
+      {
+        "gtm": "GTM-NXX4FQ7"
+      }
     ]
   ]
 }
