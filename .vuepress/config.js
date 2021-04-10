@@ -9,6 +9,13 @@ module.exports = {
         "name": "viewport",
         "content": "width=device-width,initial-scale=1,user-scalable=no"
       }
+    ],
+    [
+      "meta"
+      {
+        "name": "google-site-verification",
+        "content": "kWqBrWikTRDwDaEFKmjuwuEqG9EUmtlb-9UMUWvuWGo"
+      }
     ]
   ],
   "theme": "reco",
