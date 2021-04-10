@@ -7,6 +7,7 @@
     "build": "vuepress build ."
   },
   "devDependencies": {
+    "@vuepress-reco/vuepress-plugin-rss": "^1.0.2",
     "vuepress": "1.5.4",
     "vuepress-theme-reco": "1.5.7"
   },

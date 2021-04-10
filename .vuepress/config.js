@@ -26,6 +26,11 @@ module.exports = {
         "icon": "reco-date"
       },
       {
+        "text": "RSS",
+        "link": "https://whyayen.github.io/rss.xml",
+        "icon": "reco-rss"
+      },
+      {
         "text": "Contact",
         "icon": "reco-message",
         "items": [
@@ -61,5 +66,13 @@ module.exports = {
   },
   "markdown": {
     "lineNumbers": true
-  }
+  },
+  "plugins": [
+    [
+      "@vuepress-reco/vuepress-plugin-rss",
+      {
+        "site_url": "https://whyayen.github.io" 
+      }
+    ]
+  ]
 }
