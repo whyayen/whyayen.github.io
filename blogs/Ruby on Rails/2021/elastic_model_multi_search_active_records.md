@@ -181,3 +181,10 @@ Response.new(response).records
 
 ## 總結
 寫得有些凌亂，也不是很好懂，且 Records 後面我是靠猜測加實驗，並沒有深追實作方式及原理，最終發現可以如期得到我想要的結果，因此可能有部分理解錯誤、寫錯的地方，還請多多包涵、指正，總之 `mseach` 實作 `records` 的方法是做得到，只是大家的 `msearch` 搜尋方式及結果都不太一樣，可能無法像 `search` 的 response 這麼單純，所以可能需要修改成自己的使用場景。
+
+另外這裡拿 document 的 `_index` 去轉成 Class，如果是使用 `alias` 的話，這裡的 `_index` 並不是 alias name，會導致找不到 Class 而噴錯
+```ruby
+model = index_name.classify.constantize # 把 index name 轉成 Model，如 Article
+```
+
+所以其實不是那麼推薦使用這種方法，尤其有 Alias 的 index
