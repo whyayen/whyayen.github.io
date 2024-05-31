@@ -1,5 +1,5 @@
 module.exports = {
-  "title": "Jayuen",
+  "title": "Gin's Blog",
   "description": "紀錄一些關於工作或開發上遇到的問題",
   "dest": "public",
   "head": [
@@ -68,7 +68,7 @@ module.exports = {
     "search": true,
     "searchMaxSuggestions": 10,
     "lastUpdated": "Last Updated",
-    "author": "Jayuen",
+    "author": "Gin",
     "startYear": "2020"
   },
   "markdown": {
