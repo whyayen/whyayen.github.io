@@ -1,8 +1,24 @@
-module.exports = {
-  "title": "Gin's Blog",
-  "description": "紀錄一些關於工作或開發上遇到的問題",
-  "dest": "public",
-  "head": [
+import { viteBundler } from '@vuepress/bundler-vite'
+import { defaultTheme } from '@vuepress/theme-default'
+import { defineUserConfig } from 'vuepress'
+import { googleAnalyticsPlugin } from '@vuepress/plugin-google-analytics'
+
+export default defineUserConfig({
+  bundler: viteBundler(),
+  locales: {
+    '/': {
+      lang: 'zh-TW',
+      title: 'Gin\'s Blog',
+      description: 'Gin 的部落格',
+    },
+    '/en/': {
+      lang: 'en-US',
+      title: 'Gin\'s Blog',
+      description: 'Gin\'s Blog',
+    },
+  },
+  dest: 'public',
+  head: [
     [
       "meta",
       {
@@ -16,82 +32,53 @@ module.exports = {
         "name": "google-site-verification",
         "content": "kWqBrWikTRDwDaEFKmjuwuEqG9EUmtlb-9UMUWvuWGo"
       }
-    ]
-  ],
-  "theme": "reco",
-  "themeConfig": {
-    "noFoundPageByTencent": false,
-    "nav": [
-      {
-        "text": "Home",
-        "link": "/",
-        "icon": "reco-home"
-      },
-      {
-        "text": "TimeLine",
-        "link": "/timeline/",
-        "icon": "reco-date"
-      },
-      {
-        "text": "RSS",
-        "link": "https://whyayen.github.io/rss.xml",
-        "icon": "reco-rss"
-      },
-      {
-        "text": "Contact",
-        "icon": "reco-message",
-        "items": [
-          {
-            "text": "GitHub",
-            "link": "https://github.com/whyayen",
-            "icon": "reco-github"
-          },
-          {
-            "text": "Medium",
-            "link": "https://medium.com/@wannabearapper",
-            "icon": "reco-blog"
-          }
-        ]
-      }
+      ]
     ],
-    "type": "blog",
-    "blogConfig": {
-      "category": {
-        "location": 2,
-        "text": "Category"
+    theme: defaultTheme({
+      repo: 'whyayen/whyayen.github.io',
+      repoLabel: 'GitHub',
+      locales: {
+        '/': {
+          selectLanguageName: '中文',
+          selectLanguageText: '語言',
+          navbar: [
+            { text: '首頁', link: '/' },
+          ],
+        },
+        '/en/': {
+          selectLanguageName: 'English',
+          selectLanguageText: 'Languages',
+          navbar: [
+            { text: 'Home', link: '/en/' },
+          ],
+        },
       },
-      "tag": {
-        "location": 3,
-        "text": "Tag"
+      sidebar: 'auto',
+    }),
+  plugins: [
+    googleAnalyticsPlugin({
+      id: 'GTM-NXX4FQ7',
+    }),
+    {
+      name: 'aggregate-posts',
+      onPrepared: async (app) => {
+        const posts = app.pages
+          .filter(page => page.path.includes('/posts/') && page.path.endsWith('.html'))
+          .map(page => ({
+            title: page.title,
+            path: page.path,
+            date: page.frontmatter.date || '',
+            description: page.frontmatter.description || '',
+            lang: page.lang
+          }))
+          .sort((a, b) => {
+            const dateA = new Date(a.date || 0)
+            const dateB = new Date(b.date || 0)
+            return dateB - dateA
+          })
+
+        await app.writeTemp('postsData.js', `export const posts = ${JSON.stringify(posts)}`)
       }
-    },
-    "search": true,
-    "searchMaxSuggestions": 10,
-    "lastUpdated": "Last Updated",
-    "author": "Gin",
-    "startYear": "2020"
-  },
-  "markdown": {
-    "lineNumbers": true
-  },
-  "plugins": [
-    [
-      "@vuepress-reco/vuepress-plugin-rss",
-      {
-        "site_url": "https://whyayen.github.io" 
-      }
-    ],
-    [
-      "sitemap",
-      {
-        "hostname": "https://whyayen.github.io"
-      }
-    ],
-    [
-      "vuepress-plugin-google-tag-manager",
-      {
-        "gtm": "GTM-NXX4FQ7"
-      }
-    ]
+    }
   ]
-}
+})

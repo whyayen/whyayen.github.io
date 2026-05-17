@@ -15,25 +15,32 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Checkout 🛎️
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          fetch-depth: 0
 
-      # Runs a single command using the runners shell
-      - name: Install 🔧
-        uses: borales/actions-yarn@v2.0.0
-        with:
-          cmd: install
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
 
-      - name: Build 🔧
-        uses: borales/actions-yarn@v2.0.0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          cmd: build
+          # choose node.js version to use
+          node-version: 22
+          # cache deps for pnpm
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      # run build script
+      - name: Build VuePress site
+        run: pnpm build
 
       - name: Deploy 🚀
-        uses: JamesIves/github-pages-deploy-action@3.7.1
+        uses: crazy-max/ghaction-github-pages@v4
         with:
+          target_branch: gh-pages
+          build_dir: docs/.vuepress/dist
+        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: gh-pages # The branch the action should deploy to.
-          FOLDER: public # The folder the action should deploy.
-          CLEAN: true
