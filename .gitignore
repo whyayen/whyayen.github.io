@@ -124,6 +124,5 @@ dist
 .vuepress/dist
 
 # pnpm
-pnpm-workspace.yaml
 
 .idea/*
