@@ -1,6 +1,7 @@
 {
   "name": "Blog",
   "version": "1.0.0",
+  "packageManager": "pnpm@11.1.2",
   "author": "Gin",
   "scripts": {
     "dev": "vuepress dev .",
