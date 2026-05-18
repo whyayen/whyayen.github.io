@@ -86,10 +86,11 @@ export default defineUserConfig({
       rss: true,
       atom: true,
       json: true,
-      dev: true, // 讓 dev 模式也能產生 feed
+      count: 20, // 限制 RSS Feed 僅抓取前 20 篇
+      dev: true,
       filter: ({ filePathRelative }) => 
         filePathRelative && 
-        filePathRelative.startsWith('posts/') && 
+        filePathRelative.includes('posts/') && 
         !filePathRelative.endsWith('README.md')
     })
   ]
