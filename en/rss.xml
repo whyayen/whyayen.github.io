@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?><?xml-stylesheet type="text/xsl" href="https://blog.giiin.dev/en/rss.xsl"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <atom:link href="https://blog.giiin.dev/en/rss.xml" rel="self" type="application/rss+xml"/>
+    <title>Gin&amp;apos;s Blog</title>
+    <link>https://blog.giiin.dev/en/</link>
+    <description>Gin&amp;apos;s Blog</description>
+    <language>en-US</language>
+    <pubDate>Mon, 18 May 2026 09:17:21 GMT</pubDate>
+    <lastBuildDate>Mon, 18 May 2026 09:17:21 GMT</lastBuildDate>
+    <generator>@vuepress/plugin-feed</generator>
+    <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
+    <item>
+      <title>test</title>
+      <link>https://blog.giiin.dev/en/posts/test.html</link>
+      <guid>https://blog.giiin.dev/en/posts/test.html</guid>
+      <source url="https://blog.giiin.dev/en/rss.xml">test</source>
+      <description>test</description>
+      <pubDate>Sun, 17 May 2026 00:00:00 GMT</pubDate>
+      <content:encoded><![CDATA[
+]]></content:encoded>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,20 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "Gin's Blog",
+  "home_page_url": "https://blog.giiin.dev/en/",
+  "feed_url": "https://blog.giiin.dev/en/feed.json",
+  "description": "Gin's Blog",
+  "items": [
+    {
+      "title": "test",
+      "url": "https://blog.giiin.dev/en/posts/test.html",
+      "id": "https://blog.giiin.dev/en/posts/test.html",
+      "summary": "test",
+      "content_html": "\n",
+      "date_published": "2026-05-17T00:00:00.000Z",
+      "date_modified": "2026-05-17T16:05:03.000Z",
+      "authors": [],
+      "tags": []
+    }
+  ]
+}

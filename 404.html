@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="VuePress 2.0.0-rc.30" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+      }
+
+      [data-theme='dark'] {
+        --vp-c-bg: #1b1b1f;
+      }
+
+      html,
+      body {
+        background-color: var(--vp-c-bg);
+      }
+    </style>
+    <script>
+      const useChoice = localStorage.getItem('vuepress-color-scheme')
+      const systemStatus =
+        'matchMedia' in window
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          : false
+
+      if (useChoice === 'light') {
+        document.documentElement.dataset.theme = 'light'
+      } else if (useChoice === 'dark' || systemStatus) {
+        document.documentElement.dataset.theme = 'dark'
+      }
+    </script>
+    <link rel="alternate" type="application/atom+xml" href="https://blog.giiin.dev/atom.xml" title="Gin's Blog Atom Feed"><link rel="alternate" type="application/json" href="https://blog.giiin.dev/feed.json" title="Gin's Blog JSON Feed"><link rel="alternate" type="application/rss+xml" href="https://blog.giiin.dev/rss.xml" title="Gin's Blog RSS Feed"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><meta name="google-site-verification" content="kWqBrWikTRDwDaEFKmjuwuEqG9EUmtlb-9UMUWvuWGo"><title>Gin's Blog</title><meta name="description" content="Gin 的部落格">
+    <link rel="preload" href="/assets/style-DXzN4GHc.css" as="style"><link rel="stylesheet" href="/assets/style-DXzN4GHc.css">
+    <link rel="modulepreload" href="/assets/app-Dwt1MRSo.js"><link rel="modulepreload" href="/assets/404.html-DEav46ct.js">
+    <link rel="prefetch" href="/assets/README-BF0Y1ldT.js" as="script"><link rel="prefetch" href="/assets/README-DOaq2P4-.js" as="script"><link rel="prefetch" href="/assets/test-Dpwjo0hR.js" as="script"><link rel="prefetch" href="/assets/test-m2kCkVRd.js" as="script"><link rel="prefetch" href="/assets/git-push-to-private-ec2-BAokgwb4.js" as="script"><link rel="prefetch" href="/assets/circle_ci_cancel_github_draft_pr-9xQbrqW4.js" as="script"><link rel="prefetch" href="/assets/120701-CVwA-ZkL.js" as="script"><link rel="prefetch" href="/assets/pixel-3-xl-fun2repair-experience-BecOPq5i.js" as="script"><link rel="prefetch" href="/assets/112202-BA3vF8Ka.js" as="script"><link rel="prefetch" href="/assets/my_cnf_difference_between_conf_and_mysql_conf-C7kx1eiA.js" as="script"><link rel="prefetch" href="/assets/112201-Dr6drNXq.js" as="script"><link rel="prefetch" href="/assets/attach_s3_file_with_activestorage_1213-DhZuwgw6.js" as="script"><link rel="prefetch" href="/assets/ruby_gem_connection_pool_intro-CaUkJbms.js" as="script"><link rel="prefetch" href="/assets/elastic_model_multi_search_active_records-DeGQ5-v_.js" as="script">
+  </head>
+  <body>
+    <div id="app"><!--[--><div class="vp-theme-container" vp-container data-v-1be1b0f9><main class="page" data-v-1be1b0f9><div vp-content data-v-1be1b0f9><h1 data-v-1be1b0f9>404</h1><blockquote data-v-1be1b0f9>There&#39;s nothing here.</blockquote><a class="route-link" href="/" data-v-1be1b0f9>Take me home</a></div></main></div><!--[--><!----><!--]--><!--]--></div>
+    <script type="module" src="/assets/app-Dwt1MRSo.js" defer></script>
+  </body>
+</html>

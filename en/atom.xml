@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?><?xml-stylesheet type="text/xsl" href="https://blog.giiin.dev/en/atom.xsl"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en-US">
+  <id>https://blog.giiin.dev/en/</id>
+  <title>Gin&amp;apos;s Blog</title>
+  <subtitle>Gin&amp;apos;s Blog</subtitle>
+  <updated>2026-05-18T09:17:21.496Z</updated>
+  <generator>@vuepress/plugin-feed</generator>
+  <link rel="self" href="https://blog.giiin.dev/en/atom.xml"/>
+  <link rel="alternate" href="https://blog.giiin.dev/en/"/>
+  <entry>
+    <title type="text">test</title>
+    <id>https://blog.giiin.dev/en/posts/test.html</id>
+    <link href="https://blog.giiin.dev/en/posts/test.html"/>
+    <updated>2026-05-17T16:05:03.000Z</updated>
+    <summary type="html"><![CDATA[
+]]></summary>
+    <content type="html"><![CDATA[
+]]></content>
+    <published>2026-05-17T00:00:00.000Z</published>
+  </entry>
+</feed>
