@@ -2,6 +2,7 @@ import { viteBundler } from '@vuepress/bundler-vite'
 import { defaultTheme } from '@vuepress/theme-default'
 import { defineUserConfig } from 'vuepress'
 import { googleAnalyticsPlugin } from '@vuepress/plugin-google-analytics'
+import { feedPlugin } from '@vuepress/plugin-feed'
 
 export default defineUserConfig({
   bundler: viteBundler(),
@@ -79,6 +80,17 @@ export default defineUserConfig({
 
         await app.writeTemp('postsData.js', `export const posts = ${JSON.stringify(posts)}`)
       }
-    }
+    },
+    feedPlugin({
+      hostname: 'https://blog.giiin.dev',
+      rss: true,
+      atom: true,
+      json: true,
+      dev: true, // 讓 dev 模式也能產生 feed
+      filter: ({ filePathRelative }) => 
+        filePathRelative && 
+        filePathRelative.startsWith('posts/') && 
+        !filePathRelative.endsWith('README.md')
+    })
   ]
 })
