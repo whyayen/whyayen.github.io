@@ -35,7 +35,7 @@ export default defineUserConfig({
       ]
     ],
     theme: defaultTheme({
-      repo: 'whyayen/whyayen.github.io',
+      repo: 'https://github.com/whyayen/whyayen.github.io',
       repoLabel: 'GitHub',
       locales: {
         '/': {
