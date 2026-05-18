@@ -3,7 +3,6 @@ import { defaultTheme } from '@vuepress/theme-default'
 import { defineUserConfig } from 'vuepress'
 import { googleAnalyticsPlugin } from '@vuepress/plugin-google-analytics'
 import { feedPlugin } from '@vuepress/plugin-feed'
-import { removeHtmlExtensionPlugin } from 'vuepress-plugin-remove-html-extension'
 
 export default defineUserConfig({
   bundler: viteBundler(),
@@ -45,7 +44,7 @@ export default defineUserConfig({
           selectLanguageText: '語言',
           navbar: [
             { text: '首頁', link: '/' },
-            { text: 'RSS', link: '/rss.xml' },
+            { text: 'RSS', link: 'https://blog.giiin.dev/rss.xml', external: true },
           ],
         },
         '/en/': {
@@ -53,7 +52,7 @@ export default defineUserConfig({
           selectLanguageText: 'Languages',
           navbar: [
             { text: 'Home', link: '/en/' },
-            { text: 'RSS', link: '/en/rss.xml' },
+            { text: 'RSS', link: 'https://blog.giiin.dev/en/rss.xml', external: true },
           ],
         },
       },
@@ -63,13 +62,11 @@ export default defineUserConfig({
     googleAnalyticsPlugin({
       id: 'GTM-NXX4FQ7',
     }),
-    // avoid to append .html at the end of url when click nav links
-    removeHtmlExtensionPlugin(),
     {
       name: 'aggregate-posts',
       onPrepared: async (app) => {
         const posts = app.pages
-          .filter(page => page.path.includes('/posts/') && !page.path.endsWith('/'))
+          .filter(page => page.path.includes('/posts/') && page.path.endsWith('.html'))
           .map(page => ({
             title: page.title,
             path: page.path,
@@ -97,6 +94,6 @@ export default defineUserConfig({
         filePathRelative &&
         filePathRelative.includes('posts/') &&
         !filePathRelative.endsWith('README.md')
-    })
+    }),
   ]
 })
