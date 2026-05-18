@@ -16,7 +16,8 @@
     "@vuepress/theme-default": "2.0.0-rc.130",
     "sass-embedded": "^1.99.0",
     "vue": "^3.5.34",
-    "vuepress": "2.0.0-rc.30"
+    "vuepress": "2.0.0-rc.30",
+    "vuepress-plugin-remove-html-extension": "^1.25.0"
   },
   "dependencies": {
     "vue-router": "^4.0.13"

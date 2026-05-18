@@ -39,6 +39,9 @@ importers:
       vuepress:
         specifier: 2.0.0-rc.30
         version: 2.0.0-rc.30(@vue/compiler-sfc@3.5.34)(@vuepress/bundler-vite@2.0.0-rc.30(@types/node@25.8.0)(@vue/compiler-sfc@3.5.34)(esbuild@0.28.0)(sass-embedded@1.99.0)(sass@1.99.0)(yaml@2.9.0))(vue@3.5.34)
+      vuepress-plugin-remove-html-extension:
+        specifier: ^1.25.0
+        version: 1.25.0(@vue/compiler-sfc@3.5.34)
 
 packages:
 
@@ -642,8 +645,14 @@ packages:
     resolution: {integrity: sha512-AE77SLQyaebUqqLp6SAjno9jMjgjARqZlE3db4Vwrnd2g3W2LDLOdxs6MCbA5OiZmoasr2XtKGNbf0mW3EVSRg==}
     hasBin: true
 
+  '@vuepress/client@2.0.0-rc.28':
+    resolution: {integrity: sha512-870kxivNDXHQ1cY9kHXna2p4rnxvTG8n09dTnoUCzpBio6sHoJNOpSahLGNW5YhQzOuLVwvKSA4J3NsQ+iU+HQ==}
+
   '@vuepress/client@2.0.0-rc.30':
     resolution: {integrity: sha512-bIAY32Z3Rx6ONBriY+8K2K5wjKxQXzA1jMao4cVTOgMfapHyzhyfNCp1FTkWw6iHoccM9xIDniuyeT8W6JDWPg==}
+
+  '@vuepress/core@2.0.0-rc.28':
+    resolution: {integrity: sha512-S/4/JeYoz7/jSOYk/Mb0cesN/62aazKNEZf1lMA7FGBXv9gYekXFL+YPEODl5pQ3SUuRDNFSTIbx8UtvMwiXAg==}
 
   '@vuepress/core@2.0.0-rc.30':
     resolution: {integrity: sha512-Sxe+S0xC0Yn7eh4P4TlnzolYqDBo62ZnfbY3qaLc5nlKW4sgJY+pJDBqSOHBL5Z5I4q0V43+9WULNtHXeDHVMg==}
@@ -669,6 +678,9 @@ packages:
     peerDependenciesMeta:
       '@vueuse/core':
         optional: true
+
+  '@vuepress/markdown@2.0.0-rc.28':
+    resolution: {integrity: sha512-QHTQx2iuqU+5wOI58ByhlkkkCkv0HRM/DTddlUkz7c+NkbONN4WYN//tBypvFLiyJxGJNsR6QfBd1uaBrfsDpg==}
 
   '@vuepress/markdown@2.0.0-rc.30':
     resolution: {integrity: sha512-4wloGD4xBVm09yi48rPg9LOBXHh/aHGMxpks1GuF79yifS78n8cHSZilWaDryM5nimcUrPtK21XUAXFjyZHjBA==}
@@ -758,6 +770,9 @@ packages:
     peerDependencies:
       vuepress: 2.0.0-rc.30
 
+  '@vuepress/shared@2.0.0-rc.28':
+    resolution: {integrity: sha512-swSMYnnKWPaNYJaXuMCeLGe9xeGI/pW99yajGwU3e4cz//ifUanCrfVD8CVudv3841ymOsNOnjgfxV6V0DXE5w==}
+
   '@vuepress/shared@2.0.0-rc.30':
     resolution: {integrity: sha512-tW2bUobo96UQjBtnq6VkFG8ytWTwFT/3jjSVp75kDUb6N6D5ogXZdQIMvX7q+9OW0ogNKjLkCyRM3xK5eJbojA==}
 
@@ -775,6 +790,9 @@ packages:
         optional: true
       sass-loader:
         optional: true
+
+  '@vuepress/utils@2.0.0-rc.28':
+    resolution: {integrity: sha512-oias4eSpj9FpDboXf7QzvcrZXtYAKWpJo6H2trnSgbXlo+B+xP+AYMSxj5j7XGtuwp7E0usz3TH6alXnPF6nuQ==}
 
   '@vuepress/utils@2.0.0-rc.30':
     resolution: {integrity: sha512-pIqvCPDAm3puCeJqYtVmxTN35Q3ApKYe5O6xPYt0SExnmmZI6W7QmV1ZsYwanjjjWME2Kqd4OrFVxEw7V+V6ng==}
@@ -1617,6 +1635,10 @@ packages:
     resolution: {integrity: sha512-0Mqk3AT2TZCXWKdcoaufeXNukv2mTrEZExeXlHIOZXdqYoHHr4n51pymnwV8x2BOVxwXbK2HLlI7usrqMpycdg==}
     engines: {node: ^20.19.0 || >=22.12.0}
 
+  upath@2.0.1:
+    resolution: {integrity: sha512-1uEe95xksV1O0CYKXo8vQvN1JEbtJp7lb7C5U9HMsIp6IVwntkH/oNUzyVNQSd4S1sYk2FpSSW44FqMc8qee5w==}
+    engines: {node: '>=4'}
+
   upath@3.0.7:
     resolution: {integrity: sha512-VjBBquch25nUGMuVBpOb2Cj3gc8Kb7lJBqbsXR/0anZ/5uJsL14Kpth9JKfnBsckxCfgIp6hPvcvvmZ97R9X7g==}
     engines: {node: '>=20'}
@@ -1709,6 +1731,10 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  vuepress-plugin-remove-html-extension@1.25.0:
+    resolution: {integrity: sha512-+6wlA3yY4DwHkXQbn01HXqgGCiRIxZl5AQQFgbNJi7KC04r7VWRJP83HwYa4FFOBCqG4hCNv9A7aLK8xNI63Ow==}
+    engines: {node: ^16.0.0 || >=18.0.0}
 
   vuepress@2.0.0-rc.30:
     resolution: {integrity: sha512-GHAIiUzDRvUJ4LW1K3Ha7VsDIuEOM0hlPSP6/8vTkspi23g4/JFGwy27+3IXDymIN7opxqrawjiO1ORTaF30DA==}
@@ -2316,6 +2342,19 @@ snapshots:
       - supports-color
       - typescript
 
+  '@vuepress/client@2.0.0-rc.28(@vue/compiler-sfc@3.5.34)':
+    dependencies:
+      '@vue/devtools-api': 8.1.2
+      '@vue/devtools-kit': 8.1.2
+      '@vuepress/shared': 2.0.0-rc.28
+      vue: 3.5.34
+      vue-router: 5.0.7(@vue/compiler-sfc@3.5.34)(vue@3.5.34)
+    transitivePeerDependencies:
+      - '@pinia/colada'
+      - '@vue/compiler-sfc'
+      - pinia
+      - typescript
+
   '@vuepress/client@2.0.0-rc.30(@vue/compiler-sfc@3.5.34)':
     dependencies:
       '@vue/devtools-api': 8.1.2
@@ -2327,6 +2366,20 @@ snapshots:
       - '@pinia/colada'
       - '@vue/compiler-sfc'
       - pinia
+      - typescript
+
+  '@vuepress/core@2.0.0-rc.28(@vue/compiler-sfc@3.5.34)':
+    dependencies:
+      '@vuepress/client': 2.0.0-rc.28(@vue/compiler-sfc@3.5.34)
+      '@vuepress/markdown': 2.0.0-rc.28
+      '@vuepress/shared': 2.0.0-rc.28
+      '@vuepress/utils': 2.0.0-rc.28
+      vue: 3.5.34
+    transitivePeerDependencies:
+      - '@pinia/colada'
+      - '@vue/compiler-sfc'
+      - pinia
+      - supports-color
       - typescript
 
   '@vuepress/core@2.0.0-rc.30(@vue/compiler-sfc@3.5.34)':
@@ -2363,6 +2416,27 @@ snapshots:
       vuepress: 2.0.0-rc.30(@vue/compiler-sfc@3.5.34)(@vuepress/bundler-vite@2.0.0-rc.30(@types/node@25.8.0)(@vue/compiler-sfc@3.5.34)(esbuild@0.28.0)(sass-embedded@1.99.0)(sass@1.99.0)(yaml@2.9.0))(vue@3.5.34)
     optionalDependencies:
       '@vueuse/core': 14.3.0(vue@3.5.34)
+
+  '@vuepress/markdown@2.0.0-rc.28':
+    dependencies:
+      '@mdit-vue/plugin-component': 3.0.2
+      '@mdit-vue/plugin-frontmatter': 3.0.2
+      '@mdit-vue/plugin-headers': 3.0.2
+      '@mdit-vue/plugin-sfc': 3.0.2
+      '@mdit-vue/plugin-title': 3.0.2
+      '@mdit-vue/plugin-toc': 3.0.2
+      '@mdit-vue/shared': 3.0.2
+      '@mdit-vue/types': 3.0.2
+      '@types/markdown-it': 14.1.2
+      '@types/markdown-it-emoji': 3.0.1
+      '@vuepress/shared': 2.0.0-rc.28
+      '@vuepress/utils': 2.0.0-rc.28
+      markdown-it: 14.1.1
+      markdown-it-anchor: 9.2.0(@types/markdown-it@14.1.2)(markdown-it@14.1.1)
+      markdown-it-emoji: 3.0.0
+      mdurl: 2.0.0
+    transitivePeerDependencies:
+      - supports-color
 
   '@vuepress/markdown@2.0.0-rc.30':
     dependencies:
@@ -2563,6 +2637,10 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
+  '@vuepress/shared@2.0.0-rc.28':
+    dependencies:
+      '@mdit-vue/types': 3.0.2
+
   '@vuepress/shared@2.0.0-rc.30':
     dependencies:
       '@mdit-vue/types': 3.0.2
@@ -2595,6 +2673,24 @@ snapshots:
       - '@vuepress/bundler-webpack'
       - markdown-it
       - typescript
+
+  '@vuepress/utils@2.0.0-rc.28':
+    dependencies:
+      '@types/debug': 4.1.13
+      '@types/fs-extra': 11.0.4
+      '@types/hash-sum': 1.0.2
+      '@types/picomatch': 4.0.3
+      '@vuepress/shared': 2.0.0-rc.28
+      debug: 4.4.3
+      fs-extra: 11.3.5
+      hash-sum: 2.0.0
+      ora: 9.4.0
+      picocolors: 1.1.1
+      picomatch: 4.0.4
+      tinyglobby: 0.2.16
+      upath: 2.0.1
+    transitivePeerDependencies:
+      - supports-color
 
   '@vuepress/utils@2.0.0-rc.30':
     dependencies:
@@ -3459,6 +3555,8 @@ snapshots:
       picomatch: 4.0.4
       webpack-virtual-modules: 0.6.2
 
+  upath@2.0.1: {}
+
   upath@3.0.7: {}
 
   update-browserslist-db@1.2.3(browserslist@4.28.2):
@@ -3534,6 +3632,16 @@ snapshots:
       '@vue/runtime-dom': 3.5.34
       '@vue/server-renderer': 3.5.34(vue@3.5.34)
       '@vue/shared': 3.5.34
+
+  vuepress-plugin-remove-html-extension@1.25.0(@vue/compiler-sfc@3.5.34):
+    dependencies:
+      '@vuepress/core': 2.0.0-rc.28(@vue/compiler-sfc@3.5.34)
+    transitivePeerDependencies:
+      - '@pinia/colada'
+      - '@vue/compiler-sfc'
+      - pinia
+      - supports-color
+      - typescript
 
   vuepress@2.0.0-rc.30(@vue/compiler-sfc@3.5.34)(@vuepress/bundler-vite@2.0.0-rc.30(@types/node@25.8.0)(@vue/compiler-sfc@3.5.34)(esbuild@0.28.0)(sass-embedded@1.99.0)(sass@1.99.0)(yaml@2.9.0))(vue@3.5.34):
     dependencies:
