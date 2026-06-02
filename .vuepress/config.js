@@ -38,6 +38,7 @@ export default defineUserConfig({
     theme: defaultTheme({
       repo: 'https://github.com/whyayen/whyayen.github.io',
       repoLabel: 'GitHub',
+      contributors: false,
       locales: {
         '/': {
           selectLanguageName: '中文',
