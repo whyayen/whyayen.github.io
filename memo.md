@@ -76,3 +76,17 @@ console.log('无警告或错误')
 console.warn('警告') // [!code warning]
 console.error('错误') // [!code error]
 ```
+
+程式碼顯示收摺：
+```go :collapsed-lines=5
+1
+2
+3
+4
+5
+這行不會顯示
+```
+
+```go :no-collapsed-lines
+不折疊，有多少顯示多少
+```

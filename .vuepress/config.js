@@ -70,6 +70,8 @@ export default defineUserConfig({
           notationFocus: true,
           notationHighlight: true,
           notationErrorLevel: true,
+          collapsedLines: false,
+          lineNumbers: true,
         }
       }
     }),
