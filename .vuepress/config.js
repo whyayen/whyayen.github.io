@@ -3,6 +3,8 @@ import { defaultTheme } from '@vuepress/theme-default'
 import { defineUserConfig } from 'vuepress'
 import { googleAnalyticsPlugin } from '@vuepress/plugin-google-analytics'
 import { feedPlugin } from '@vuepress/plugin-feed'
+import { markdownMathPlugin } from '@vuepress/plugin-markdown-math'
+import { markdownFileTreePlugin } from '@vuepress/plugin-markdown-file-tree'
 
 export default defineUserConfig({
   bundler: viteBundler(),
@@ -58,6 +60,18 @@ export default defineUserConfig({
         },
       },
       sidebar: 'auto',
+      themePlugins: {
+        prismjs: {
+          themes: {
+            light: 'vs',
+            dark: 'vsc-dark-plus'
+          },
+          notationDiff: true,
+          notationFocus: true,
+          notationHighlight: true,
+          notationErrorLevel: true,
+        }
+      }
     }),
     plugins: [
     googleAnalyticsPlugin({
@@ -96,5 +110,10 @@ export default defineUserConfig({
         filePathRelative.includes('posts/') &&
         !filePathRelative.endsWith('README.md')
     }),
+    markdownMathPlugin({
+      type: 'katex',
+      copy: true
+    }),
+    markdownFileTreePlugin(),
   ]
 })
