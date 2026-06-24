@@ -5,6 +5,7 @@ import { googleAnalyticsPlugin } from '@vuepress/plugin-google-analytics'
 import { feedPlugin } from '@vuepress/plugin-feed'
 import { markdownMathPlugin } from '@vuepress/plugin-markdown-math'
 import { markdownFileTreePlugin } from '@vuepress/plugin-markdown-file-tree'
+import { shikiPlugin } from '@vuepress/plugin-shiki'
 
 export default defineUserConfig({
   bundler: viteBundler(),
@@ -61,18 +62,7 @@ export default defineUserConfig({
       },
       sidebar: 'auto',
       themePlugins: {
-        prismjs: {
-          themes: {
-            light: 'vs',
-            dark: 'vsc-dark-plus'
-          },
-          notationDiff: true,
-          notationFocus: true,
-          notationHighlight: true,
-          notationErrorLevel: true,
-          collapsedLines: false,
-          lineNumbers: true,
-        }
+        prismjs: false
       }
     }),
     plugins: [
@@ -117,5 +107,15 @@ export default defineUserConfig({
       copy: true
     }),
     markdownFileTreePlugin(),
+    shikiPlugin({
+      langs: ['js', 'json', 'go', 'md', 'bash', 'diff', 'yaml', 'ruby'],
+      themes: { light: 'github-light-default', dark: 'github-dark-default' },
+      collapsedLines: false,
+      notationDiff: true,
+      notationFocus: true,
+      notationHighlight: true,
+      notationErrorLevel: true,
+      lineNumbers: true,
+    }),
   ]
 })
