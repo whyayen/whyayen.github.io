@@ -1,5 +1,5 @@
 ---
-date: 2026-06-10
+date: 2026-10-30
 ---
 # 從 Ring Buffer 看 Golang GMP 模型的 Processor 對 Local Run Queue 的實現
 
@@ -119,7 +119,7 @@ func (r *RingBuffer[T]) Dequeue() (T, error) {
 	}
 
 	data := r.data[r.head]
-	r.data[r.head] = zero // 清空，避免引用型別造成 GC retention
+	r.data[r.head] = zero
 
 	r.head = (r.head + 1) % r.size
 
@@ -133,14 +133,14 @@ func (r *RingBuffer[T]) Dequeue() (T, error) {
 
 考量到以下場景（以上面第 2 版程式碼為例）：
 有 2 個 producer 同時 enqueue，假設初始狀態：
-```
+```:no-line-numbers
 head=0
 tail=0
 data=[_, _, _]
 ```
 
 Thread A 執行 `enqueue(1)`，Thread B 執行 `enqueue(2)`，假設以下面這個順序執行
-```
+```:no-line-numbers
 A: 讀 r.tail = 0
 B: 讀 r.tail = 0
 
@@ -157,7 +157,7 @@ A: r.tail = 1
 B: r.tail = 1
 ```
 結果：
-```
+```:no-line-numbers
 data[0] = 2
 tail = 1
 ```
@@ -172,20 +172,20 @@ type RingBuffer[T any] struct {
 }
 ```
 
-Mutex 語意簡潔且易於開發，但同時也存在一些缺點：
-1. 被 block 的 thread 要不 spin，要不等待喚醒（sleep/awake），無法充分運用硬體效能
+雖然 Mutex 語意簡潔且易於開發，但同時也存在一些缺點：
+1. 無法充分運用硬體效能，被 block 的 thread 只能一直 spin 或等待喚醒（sleep/awake），
 2. 程式崩潰，發生 Deadlock
 3. 發生 [Priority Inversion](https://en.wikipedia.org/wiki/Priority_inversion)
 
-所以如果想充分發揮多處理器的硬體能力，或考慮到 scalability，那就要考慮其他實現方式。
+所以如果想充分發揮多處理器的硬體能力，或考慮到 scalability，我們勢必需要有其他方式來應對。
 
-## Atomic 操作：非阻塞式同步的基石
+## Atomic
+要降低 mutex 硬體效能無法充分發揮的問題，我們當然可以把鎖的粒度切細，例如把共同存取的變數進行 sharding，每個 thread 各自存取各自的那份，從而降低 Lock Contention，然而一些場景來說用 sharding 反而顯得太重了（例如一個簡單的計數器），或者一些本身就不適合拆分的資料（如：Global Flag），這時候我們就可以透過 atomic 來實現。
 
 > "atom" 作為電腦術語，指無法再拆分為更小的執行步驟，這實際是對「硬體」的觀點，即微處理器的指令，並非從「軟體」的觀點來看。
 > 
 > —— [並行程式設計：Atomics 操作](https://hackmd.io/@sysprog/concurrency-atomics#%E9%98%BB%E5%A1%9E%E5%BC%8F%E5%90%8C%E6%AD%A5%E6%A9%9F%E5%88%B6)
 
-第一次看到這句話有種恍然大悟的感覺，就是為什麼在軟體開發很常被忽略 atomic 的重要性，我們總以為只是一行指令，或以為程式不會在一半死掉，例如 RDBMS 的 ACID，很常某些場景應該使用 transaction，以確保資料是完整寫入或全部失敗，然而卻很容易被忽略導致資料內容在特定場景下發生不如預期的值。雖然從並行程式的角度來說與 RDBMS 的 Atomicity 並不一樣，但概念都是要確保 N 個操作是同時成功或失敗。
 
 從軟體角度來說，`counter++` 這樣一個簡單的加法，其實涉及了三個操作：Load、Add、Store，如果沒有 atomicity 確保三個操作一起完成或失敗，那麼可能 2 個執行緒同時 Load，各自對讀出來的值做 Add，接著 Store 後，`counter` 本應該是 2 卻可能變成 1 了。
 
@@ -263,7 +263,7 @@ Mutex 語意簡潔且易於開發，但同時也存在一些缺點：
 #### N-way Set-Associative
 N-way 就是代表每 N 個 cache lines 組成一個 set，我們從地址算出屬於哪個 set 之後，從 set 裡面找到空的 cache lines 進行分配，如果沒有空的，需要 evict 時，我們可以採用 LRU、Random、FIFO 等策略進行 evict，同時根據地址找 cache line 時，變成先找到所屬 set，再到該 set 內遍歷尋找符合的 tag。
 
-同樣以上面 Cache Size: 64 bytes、Cache Line：8 bytes 為例，計算得出：
+同樣以上面 Cache Size: 64 bytes、Cache Line：8 bytes 為例，計算 2-way Set-Associative 得出：
 $$
 64B \div 8B = 8 \text{ cache lines} \\[0.5em]
 8 \text{ cache lines} \div 2 = 4 \text{ sets}
@@ -327,7 +327,7 @@ struct data {
 ```
 
 實驗啟動 24 個 threads，每個 thread 進行 10000 次的 NOT 運算：
-```C
+```C:no-line-numbers
 value.v = ~t;
 ```
 
@@ -339,8 +339,8 @@ printf("final: %016lX\n", value.v);
 ```
 
 持續觀測，那麼 final 最終結果會是什麼呢？
-```bash
-$ watch -n 1 "./cacheline 24 10000"
+```bash:no-line-numbers
+watch -n 1 "./cacheline 24 10000"
 ```
 
 理論上 `value.v` 的值應該會是：
@@ -365,7 +365,7 @@ $ watch -n 1 "./cacheline 24 10000"
 > 
 > Other instructions may be implemented with multiple memory accesses. From a memory-ordering point of view, there are no guarantees regarding the relative order in which the constituent memory accesses are made. There is also no guarantee that the constituent operations of a store are executed in the same order as the constituent operations of a load.
 
-不過如果在 Golang 進行一樣的 struct 宣告，並不會讓 v 座落在 2 個 cache line 上，因為 Golang 本身會對其進行對齊，要做這實驗必須自己手動 offset。
+不過如果在 Golang 進行一樣的 struct 宣告，並不會讓 `v` 座落在 2 個 cache line 上，因為 Golang 本身會對其進行對齊，要做這實驗必須自己手動 offset。
 
 如下 Golang 程式碼，可以看到這樣的結構體本身會進行對齊：
 ```go
@@ -386,7 +386,7 @@ func main() {
 ```
 
 會得到：
-```
+```:no-line-numbers
 1. 整個結構體的大小 (Size): 72 bytes
 2. 整個結構體的對齊限制 (Align): 8 bytes
 
@@ -416,7 +416,7 @@ V   的偏移量 (Offset): 64, 大小: 8
 ![System Bus](./system_bus.png)
 
 ### MESI Protocol
-我們可以藉由 [MESI Protocol](https://en.wikipedia.org/wiki/MESI_protocol) 了解 CPU 之間如何維持看到一致的資料。
+[MESI Protocol](https://en.wikipedia.org/wiki/MESI_protocol) 便是一種 Cache Coherence Protocol，我們可以透過 MESI Protocol 學習從 CPU 角度看待資料一致性。
 
 狀態說明：
 - Modified (M)
@@ -428,8 +428,978 @@ V   的偏移量 (Offset): 64, 大小: 8
 - Invalid (I)
   - Cache Line 無效（未使用）
 
-當要從某個地址讀取資料，此時會發出 PrRd 請求，接著其他 Cache 都不存在這份資料時，便會
+例如：
+1. 當 $CPU_0$ 讀取某 block 的資料時，因為是第一次讀取，因此該 cache line 狀態從 invalid 變為 exclusive
+2. 此時 $CPU_1$ 也想讀取該 block 資料，發送 PrRd 廣播，由於 $CPU_0$ 有該筆資料，直接複製到 $CPU_1$，並把該 cache line 改為 shared
+3. $CPU_0$ 此時想對該 block 寫入資料，於是 $CPU_0$ 對應該 block 的 cache line 狀態調整為 modified，必須廣播 PrWr 給其他 CPU 看是否包含此資料，由於 $CPU_1$ 也有此筆資料，因此將其狀態改為 invalid
+4. 此時 $CPU_1$ 想讀取該資料時，就發送 PrRd 廣播，然後 $CPU_0$ 因為其 cache 有該資料，且 cache line 狀態為 modified，所以需要將資料寫回主記憶體，並把狀態調整為 shared，接著 $CPU_1$ 從 $CPU_0$ 讀取資料，並把 cache line 狀態調整為 modified
+
+## Store Buffer
+
+假設 $CPU_0$ 想修改某個變數，而它所在的 cache line 目前處於 Shared 狀態，代表其他 core 可能也持有這份資料。因此 $CPU_0$ 必須先取得該 cache line 的寫入權限，讓其他 core 的副本失效，收到 invalidate ack 後才能完成這次寫入。
+
+但是 core 之間的訊息傳遞需要時間。如果每次寫入都必須等待這些動作完成，CPU 就可能花費許多時間等待（Stall），為了減少這類等待，現代 CPU 架構引入了 Store Buffer。
+
+CPU 執行 store 時，可以先將目標地址與資料放入 store buffer，讓後續指令有機會繼續執行，再由硬體處理取得寫入權限及更新 cache 等工作。
+
+![Store Buffer](./store_buffer.png)
+
+因此 **CPU 已經執行了寫入指令，不代表其他核心此時就能讀到新值**。
+
+### Store-To-Load Forwarding
+那 CPU 會讀不到自己剛寫入的值嗎？
+
+考慮到同一個 core 執行：
+```:no-line-numbers
+Store x = 1
+Load x
+```
+
+如果 `x=1` 還在 store buffer，cache 中仍是舊值，那麼讀取 `x` 時，為了維持單一執行緒的正確行為，要避免讀到舊值，處理器可以從 store buffer 取得符合條件的待寫入資料，直接提供給後續的 load，這個機制稱為 Store-to-Load Forwarding。
+
+這樣寫入的 core 已經可以讀到新值，但其他 core 仍然讀到舊值（這筆寫入尚未對其他 core 可見）。
+
+### Cache Coherence 仍不夠
+
+考量這個場景，假設 `x = 0`、`y = 0`，且兩者位於不同的 cache line。
+
+```:no-line-numbers
+    CPU0               CPU1
+------------       ------------
+Store x = 1        Store y = 1
+Load y -> r0       Load x -> r1
+``` 
+
+直覺上，會覺得兩邊都是先寫入再讀取，至少有一方能讀到 `1`，然而在允許這種行為的記憶體模型可能出現：
+- `r0 = 0`
+- `r1 = 0`
+
+$CPU_0$ 的 store buffer 裡，雖然有新的 `x`，但它讀取的是 `y`，$CPU_1$ 的 store buffer 裡，雖然有新的 `y`，但它讀取的是 `x`。
+只要寫入還留在 store buffer，而後續對另一地址的讀取已經取得結果，就能產生彷彿「Load 跑到了 Store 前面」的觀察效果。
+
+## Memory Ordering
+即使程式寫的是「先寫入、再讀取」，其他 core 觀察到的結果，也不一定能用這個順序解釋，那麼：
+**我們到底能依賴哪些記憶體存取順序？**
+
+處理器或程式語言對這些順序提供的規則與保證，就是 Memory Ordering。
+
+### Sequential Consistency
+
+以上述的例子
+```:no-line-numbers
+    CPU0               CPU1
+------------       ------------
+Store x = 1        Store y = 1
+Load y -> r0       Load x -> r1
+``` 
+
+假設：
+- $CPU_0$ 規定 `Store x=1` 必須在 `Load y` 之前
+- $CPU_1$ 規定 `Store y=1` 必須在 `Load x` 之前
+
+那麼如果 $CPU_0$ 先完成 2 個操作，再換 $CPU_1$ 則會得到 `(0, 1)`。
+1. $CPU_0$ 寫入 x = 1
+2. $CPU_0$ 讀取 y，得到 0
+3. $CPU_1$ 寫入 y = 1
+4. $CPU_1$ 讀取 x，得到 1
+
+如果兩邊都先完成寫入，再讀取會得到 `(1, 1)`。
+
+但只要**保留兩邊「先寫、再讀」的順序，不管怎麼排列，都無法讓兩邊同時讀到 0**。
+
+這種「**每個 core 維持自己的操作順序，所有操作如同交錯執行**」的模型，稱為 **Sequential Consistency（循序一致性，簡稱 SC）**。
+
+在這個模型下，所有操作看起來像是依序執行，每個核心的操作也維持原本的先後關係。
+
+:::warning
+這並不要求硬體真的一次只執行一個操作；只要最終觀察結果能符合這個模型即可。
+:::
+
+我們直覺上以為，多核心只是把各自的操作交錯執行；**但實際硬體允許的結果，可能超出這種直覺**，也就是我們上面講到 Store Buffer 可能出現 `(0, 0)` 的狀況，這種結果無法用「保留核心順序，再交錯執行」的方式解釋。
+
+也就是說，在允許這種行為的硬體記憶體模型下，普通的記憶體讀寫不一定符合我們直覺中的循序一致性。
+
+### 哪些順序可能被放寬？
+
+既然不能一律假設所有操作都按照上述模型執行，我們就需要知道「**前後兩個記憶體存取之間，到底有哪些順序是受到保證的？**」
+
+依照前後兩個操作的種類，可以分成四種：
+
+| 順序 | 問題 |
+| :---: | :---: |
+| Load -> Load | 前面的讀取，是否保證排在後面的讀取之前？ |
+| Load -> Store | 前面的讀取，是否保證排在後面的寫入之前？ |
+| Store -> Store | 前面的寫入，是否保證排在後面的寫入之前？ |
+| Store -> Load | 前面的寫入，是否保證排在後面的讀取之前？ |
+
+:::info
+這裡的順序，指的是記憶體模型所保證的可觀察順序，不單指指令進入 CPU 的順序。
+:::
+
+**不同架構提供的保證不同**，也不是這四種順序都一定會被放寬，例如前面的 store buffer 案例，展示的是對不同地址的 Store -> Load 順序可能被放寬；不能直接推論同一個架構也允許 Store -> Store 重排序。
+
+因此不能只看到程式碼中 A 寫在 B 前面，就假設其他 core 一定能依照相同順序觀察到它們。
+
+### 小結
+
+#### Cache coherence & Memory ordering
+- Cache coherence
+	- 關注同一記憶體位置的寫入次序，讓各核心對這些寫入維持一致的次序。
+- Memory ordering
+  - 進一步規範不同記憶體存取之間的先後關係。
+
+前面的例子中，$CPU_0$ 與 $CPU_1$ 都先讀到初始值，之後寫入才對外可見，並沒有破壞 x 或 y 各自的一致性，但把 x、y 的操作放在一起看，結果就**不符合 sequential consistency**。
+
+#### 硬體之外，還有編譯器
+前面用硬體操作示意，是為了單獨理解 CPU 的行為。
+
+但實際程式還要經過編譯器，編譯器也可能在語言規則允許的範圍內，重新安排、合併或消除記憶體存取。
+因此撰寫並行程式時，需要同時考慮兩個層次：
+1. 程式語言允許編譯器如何處理這段程式。
+2. 處理器允許產生哪些記憶體存取結果。
+
+這也是為什麼不能直接把前面的硬體示意改成普通的 Go 變數讀寫，就拿來驗證 CPU 的 memory ordering：缺少同步的共享存取可能形成 data race，必須先依照語言的 memory model 判斷程式行為，例如：[Go Memory Model](https://go.dev/ref/mem)
+
+
+## Memory Barrier
+
+前面介紹 memory ordering 時，我們看到，即使兩個核心都先寫入、再讀取，最後仍然可能同時讀到 0，其中一個可能的原因是：兩邊的寫入都還留在自己的 store buffer，後續的讀取卻已經取得對方的舊值。如果我們的演算法不能接受這個結果，就需要限制這些操作的順序。**Memory Barrier**就是提供這類排序保證的機制。
+
+
+在寫入與讀取之間建立順序，我們先在兩個核心的 Store 與 Load 之間，分別放入適當的 Full Memory Barrier：
+```:no-line-numbers
+CPU 0                 CPU 1
+──────────────────    ──────────────────
+Store x = 1           Store y = 1
+Full Barrier          Full Barrier
+Load y -> r0          Load x -> r1
+```
+
+這裡的 barrier 必須能保證前面的 Store 排在後面的 Load 之前，才能排除兩邊都讀到 0 的結果。
+
+
+我們可以分 2 種情況理解：
+1. 如果 $CPU_0$ 仍然讀到 `y = 0`，代表 $CPU_1$ 的寫入尚未在這次讀取之前對它可見，但是 $CPU_0$ 自己的 `x = 1` 已經透過 barrier 建立所需的順序，因此 $CPU_1$ 之後讀取 `x` 時，就不能再得到 `0`
+2. 反過來亦然，如果 $CPU_1$ 讀到 `x = 0`，那麼 $CPU_1$ 就必然讀到 `y = 1`
+
+因此加入兩邊所需的 barrier 後，可能的結果仍然包括，以 `(r0, r1)` 表示其結果：
+1. `(0, 1)`
+2. `(1, 0)`
+3. `(1, 1)`
+
+但不再允許 `(0, 0)`。
+
+- Barrier 的作用是排除不符合排序要求的結果，它不會決定兩個核心誰先執行。
+- Barrier 不等於把資料寫回主記憶體
+- Memory barrier 關注的是：barrier 前後的記憶體存取，必須遵守哪些順序
+
+至於硬體如何達成這些保證，可能涉及等待 store buffer 中的寫入取得進展，或限制後續存取等方式，實際行為取決於架構與指令，因此也不適合把所有 barrier 都解釋成「清空 store buffer」或「停止所有指令執行」。
+
+### Barrier 種類
+不同的 Barrier，提供不同保證，前面的例子需要約束 Store -> Load，但有些場景只需要約束讀取之間，或寫入之間的順序。
+
+常見的 Barrier 種類：
+| 類型 | 主要提供的排序保證 |
+|---|---|
+| Read Barrier | 屏障前的讀取，排在屏障後的讀取之前 |
+| Write Barrier | 屏障前的寫入，排在屏障後的寫入之前 |
+| Full Barrier | 同時約束讀取與寫入，包含前面例子需要的 Store -> Load |
+
+除了 CPU，編譯器也可能在語言規則允許的範圍內，調整記憶體存取。
+
+因此還需要區分兩個層次：
+- Compiler barrier：限制編譯器對特定記憶體存取進行重排或其他最佳化。
+	- Compiler barrier 用來限制編譯器對記憶體存取的最佳化，告訴編譯器，不管進行何種最佳化手段，程式的讀寫操作影響不該跨越這個屏障，本身不一定產生 CPU 屏障指令。<br>例如 GCC 可以用帶有 "memory" clobber 的空組合語言建立 compiler barrier。
+		```C
+		asm volatile("" ::: "memory");
+		```
+		-- [Compiler Barrier - 並行程式設計 Atomics 操作](https://hackmd.io/@sysprog/concurrency-atomics#%E8%BB%9F%E9%AB%94%E8%A7%80%E9%BB%9E)
+	- Go 則沒有公開的獨立介面，而是透過 Atomic、Mutex、Channel 等同步操作，提供程式所需的排序保證。
+- CPU memory barrier：限制處理器允許產生的記憶體存取順序。
+
+### Barrier 的成本
+
+處理器透過 Store Buffer 等機制減少等待，而 barrier 則要求某些操作必須維持順序，因而可能減少原本可以重疊執行的工作，這不代表 barrier 越少越好，而是應該先確認演算法需要哪些保證，<span class="text-red">哪些操作必須排在另外哪些操作之前，以及這個保證排除了什麼錯誤結果</span>，再選擇能滿足要求的同步方式。
+
+## Invalidate Queue
+
+雖然 Store Buffer 讓發出寫入的 core 可以減少等待時間，但是一筆寫入要完成，也需要其他 cores 配合，讓它們持有的 cache line 失效。由於 Store Buffer 也很小，如果接收端無法立即處理失效請求，發出寫入的 core 本身 store buffer 又滿了，那麼還是需要等待。
+
+因此除了寫入端暫存資料，也可以在接收端暫存失效請求，這就是 Invalidate Queue。
+
+擴展後的 cache 架構如下：
+![Invalidate Queue](./invalidate_queue.png)
+
+
+當 CPU 收到 invalidate 訊息時，可以先將請求寫入 Invalidate Queue，並回覆 acknowledge（ACK），稍後再完成本地的失效處理，這能減少發送端的等待，<span class="text-red">但也讓兩件事成為不同的時間點</span>：
+- 已經收到並接受失效請求
+- 已經完成本地的失效處理
+
+這個設計仍然需要遵守 cache coherence 的規則，對後續相關請求維持必要的處理順序，不能任意忽略已接受的失效請求。
+
+:::warning
+發送端收到 ACK，不能直接被解讀成接收端後續所有讀取都已取得所需的排序保證。
+:::
+
+考量一個場景：
+- $CPU_0$ 準備資料，完成後設定 flag 讓 $CPU_1$ 知道可以讀取
+- 假設初始 `data = 0`、`ready = 0`，且兩者位於不同的 cache line
+
+
+```:no-line-numbers
+CPU 0                 CPU 1
+──────────────────    ──────────────────
+Store data = 42       重複讀取 ready
+Write Barrier         直到讀到 ready = 1
+Store ready = 1       Load data -> result
+```
+
+$CPU_0$ 加入 write barrier 是為了建立先寫入 data，再發布 ready 的順序。
+但 $CPU_1$ 看到 `ready = 1` 後，**在未提供相應讀取排序保證的架構上，不一定能讀到 `data = 42`**，<span class="text-red">只有寫入端的 barrier，還不足以建立整個資料交接所需的順序</span>。
+
+從 Invalidate Queue 的角度理解接收端的問題：
+1. 假設 $CPU_1$ 原本已經 cache 舊的 `data = 0`
+2. $CPU_0$ 準備寫入 `data = 42`，向 $CPU_1$ 發送 invalidate request
+3. $CPU_1$ 將 request 放入 invalidate queue，回覆 ACK，但尚未完成本地處理
+4. $CPU_0$ 取得所需權限，完成資料寫入，再依照 write barrier 的要求發布 ready = 1
+5. $CPU_1$ 讀到 `ready = 1`
+6. 如果沒有相應的讀取排序約束，$CPU_1$ 對 data 的讀取仍可能讀到舊值
+
+為了讓這個資料交接符合預期，$CPU_1$ 必須先確認 ready，再依照所需的順序讀取 data：
+
+```:no-line-numbers
+CPU 0                 CPU 1
+──────────────────    ──────────────────
+Store data = 42       重複讀取 ready
+Write Barrier         直到讀到 ready = 1
+											Read Barrier
+Store ready = 1       Load data -> result
+```
+
+在提供相應保證的 barrier 配對下，$CPU_1$ 既然讀到了這次發布的 `ready = 1`，後續就必須取得對應的 `data = 42`，這裡假設沒有其他寫入者再次修改 data 或 ready。
+
+可以將 read barrier 理解成硬體必須處理必要的失效工作，讓後續讀取符合排序要求，不過清空 invalidate queue 不是 read barrier 的通用定義。Barrier 定義的是必須提供的排序保證，至於如何實現，取決於處理器架構。
+
+
+## C++ 中的 Acquire 與 Release
+
+前面使用的是硬體層級的示意。實際用 C++ 撰寫這個資料交接時，要使用哪些介面，才能讓編譯器與處理器共同維持所需的順序？
+
+### 從硬體示意轉成 C++ 程式
+
+沿用 Invalidate Queue 一節的例子，發布端需要先寫入 data，再發布 ready，接收端需要先確認 ready，再讀取 data：
+
+```:no-line-numbers
+發布端                         接收端
+──────────────────────        ──────────────────────
+寫入 data = 42                 持續讀取 ready
+建立發布所需的順序               直到讀到 true
+寫入 ready = true              建立接收所需的順序
+                              讀取 data
+```
+
+在 C++ 中，我們先宣告這兩個共享變數：
+
+```C++
+#include <atomic>
+
+int data = 0;
+std::atomic<bool> ready{false};
+```
+
+data 保存要交付的資料，ready 則是傳遞通知的 atomic 變數，假設初始化在兩個執行緒開始前完成，發布端與接收端各執行一次，且沒有其他操作修改 data 或 ready。
+
+透過 atomic 讓 ready 被「發布端寫入」或「接收端讀取」這些並行存取具有原子性，但**只有原子性，還不足以建立 data 所需的同步關係**。
+
+C++ 允許透過 memory order 指定 atomic 操作的排序語意。例如 `memory_order_relaxed` 仍保留 atomic 操作的原子性與同一物件的修改次序，但不會單靠這些 relaxed 操作，建立此處 data 讀寫需要的跨執行緒同步（synchronizes-with）。
+
+在 C++ 中，可以使用 `std::atomic_thread_fence` 表達獨立的排序要求，Fence 本身不讀取或寫入 ready，也不會代替 atomic 存取，這個例子需要兩者配合。
+
+## Fence 種類
+1. **Full Fence**
+
+	在任意兩個操作之間使用 Full Fence `std::atomic_thread_fence()` ，可以避免這些操作的重新排序。然而，對於 Store-Load 操作，它們可能會被重新排序。
+2. **Acquire Fence**
+
+	`std::atomic_thread_fence(std::memory_order_acquire)` 可防止 load 被排到 barrier 後面。
+
+3. **Release Fence**
+
+	`atomic_thread_fence(std::memory_order_release)`，可防止後面的 store 被排到前面。
+
+可以得到這樣的順序：
+- acquire fence = LoadLoad + LoadStore barrier
+- release fence = LoadStore + StoreStore barrier
+
+歸納可得到以下關係圖：
+
+![Acquire / Release Fence](./acquire_release_fence.png)
+
+
+#### Release Fence：先準備資料，再發布通知
+
+發布端的寫法是：
+
+```C++
+void publish() {
+    data = 42;
+    std::atomic_thread_fence(std::memory_order_release);
+    ready.store(true, std::memory_order_relaxed);
+}
+```
+
+先只看 fence 兩側的操作：
+
+```:no-line-numbers
+Store data = 42
+       │
+  release fence
+       │
+Store ready = true
+```
+
+這裡需要維持的是 **Store data -> Store ready**：先準備好資料，再透過 ready 發布通知。
+
+Release fence 的基本排序方向，也包含前面的讀取與後面的寫入：
+
+```:no-line-numbers
+Load ──┐
+       ├── release fence ──> Store
+Store ─┘
+```
+
+所以常見圖解會將它整理成 LoadStore 與 StoreStore，這些名稱依序指 fence 前、後的操作種類，例如 StoreStore 指的就是 fence 前的寫入與 fence 後的寫入。
+
+#### Acquire Fence：先接收通知，再使用資料
+
+接收端則先等待 ready，再執行 acquire fence，最後讀取 data：
+
+```C++
+void receive() {
+    while (!ready.load(std::memory_order_relaxed)) {
+        // 持續等待發布端的通知
+    }
+
+    std::atomic_thread_fence(std::memory_order_acquire);
+    assert(data == 42);
+}
+```
+
+迴圈結束，代表最後一次 load 已讀到發布端寫入的 true，此時 fence 兩側的操作是：
+
+```:no-line-numbers
+Load ready，讀到 true
+       │
+   acquire fence
+       │
+   Load data
+```
+
+這裡需要維持的是 **Load ready -> Load data**：先確認收到通知，再使用對應的資料，`while` 負責等待，acquire fence 則參與建立讀取資料所需的同步，兩者功能不同。
+
+Acquire fence 的基本排序方向，也涵蓋後續寫入：
+
+```:no-line-numbers
+                                ┌──> Load
+Load ── acquire fence ──────────┤
+                                └──> Store
+```
+
+所以常見圖解會將它整理成 LoadLoad 與 LoadStore。後續工作不一定只有讀取資料，也可能包含修改資料。
+
+| Fence | 基本排序方向 |
+|---|---|
+| Release fence | 前面的 Load／Store -> 後面的 Store |
+| Acquire fence | 前面的 Load -> 後面的 Load／Store |
+
+:::info
+這張表用來建立排序方向的直覺，並不是 C++ 標準直接列出的指令重排規則。<br>
+C++ 實際透過同步關係規範允許的觀察結果，在此例中，還必須由 ready 的 atomic 讀寫把兩端接起來，不能只靠各自放一個 fence。
+:::
+
+<span class="text-red">當接收端的 atomic load 讀到發布端 atomic store 寫入的 `true`，且兩個 fence 位於上述位置時，release fence 與 acquire fence 就建立同步</span>。<br>相關條件定義於 [C++ 標準草案的 atomics.fences](https://eel.is/c++draft/atomics.fences#2)。
+
+另外將 acquire 與 release fence 的基本排序效果合併，也不代表額外取得 **StoreLoad** 保證。
+
+### 把排序語意放進 Atomic Store／Load
+
+同一個資料發布例子，也可以直接把排序語意附加在 ready 的 atomic 操作上：
+
+```C++
+void publish() {
+    data = 42;
+    ready.store(true, std::memory_order_release);
+}
+
+void receive() {
+    while (!ready.load(std::memory_order_acquire)) {
+        // 持續等待發布端的通知
+    }
+
+    assert(data == 42);
+}
+```
+
+這時就不再有獨立的 fence，而是由指定的 atomic 操作提供排序語意：
+
+- **Release store**：讓發布前準備資料的操作，參與透過這次 store 建立的同步。
+- **Acquire load**：讀到這次發布後，讓後續使用資料的操作受到同步保護。
+
+```:no-line-numbers
+寫入 data
+    │
+    ▼
+release store ready
+
+acquire load ready，讀到這次發布的 true
+    │
+    ▼
+讀取 data
+```
+
+在這個例子中，兩種寫法都能完成所需的資料交接，但 fence 是獨立操作，release store／acquire load 的語意則附加在指定的 atomic 存取上，不能將它們當作所有程式中的通用等價替換。
+
+- Fence 寫法：排序語意放在 fence；ready 的 relaxed store／load 是兩個 fence 之間傳遞同步關係的媒介。
+- Atomic 寫法：排序語意直接放在 ready 的 store／load 上。
+
+Release 與 acquire 也不是 load／store 都能任意選用的選項：atomic store 可以指定 release，而 atomic load 可以指定 acquire，store 不能指定 acquire，load 也不能指定 release。
+
+### 為什麼這樣能保證讀到資料？
+
+我們用剛才的 release store／acquire load 版本，把交接分成四個操作：
+
+```:no-line-numbers
+發布端                              接收端
+
+A：寫入 data = 42
+       │
+       ▼
+B：release store ready = true ────> C：acquire load ready，讀到 true
+                                          │
+                                          ▼
+                                      D：讀取 data
+```
+
+這張圖有三段關係：
+
+1. **A -> B**：發布端先寫入 data，再發布 ready。這是同一執行緒內的 `sequenced-before` 關係。
+2. **B -> C**：接收端的 acquire load 讀到這次 release store 寫入的 true，建立跨執行緒的 `synchronizes-with` 關係。
+3. **C -> D**：接收端先確認 ready，再讀取 data，同樣是 `sequenced-before` 關係。
+
+把這些關係串起來，就得到 <span class="text-red">**A happens-before D**</span>，在沒有其他修改的前提下，D 便必須讀到 A 寫入的 42，這也是為什麼 data 雖然是普通變數，它的讀寫仍能受到透過 ready 建立的同步保護。
+
+這些規則分別定義於 [atomics.order](https://eel.is/c++draft/atomics.order#2) 與 [intro.races](https://eel.is/c++draft/intro.races)。這裡的順序是語言提供的保證，不需要依賴 CPU 是否具有特定的 store buffer 或 invalidate queue 設計。
+
+| 術語 | 意義 |
+|---|---|
+| `sequenced-before` | 同一執行緒內，操作之間的先後關係 |
+| `synchronizes-with` | 符合條件的同步操作，建立跨執行緒連結 |
+| `happens-before` | 將上述關係串接後，得到的順序（強調 visible，而非實際執行的順序） |
+| `modification order` | 同一 atomic 物件的所有修改次序 |
+| SC total order | SC 操作與 fence 必須符合的共同次序 |
+
+[並行程式設計: 執行順序](https://hackmd.io/@sysprog/concurrency-ordering)
+
+### Golang
+
+文章最終要討論的是 Go，為什麼前面卻用 C++ 解釋排序？因為 **C++ 將 relaxed、acquire、release、seq_cst 等選項直接提供給程式設計者，可以用同一個例子比較不同保證；Go 公開的 sync/atomic 則統一提供 sequentially consistent 語意，沒有這組選擇介面**。
+
+這不表示 Go 不需要 memory ordering，而是 Go 讓編譯器與執行環境負責滿足公開 API 的保證，不要求應用程式自行選擇較弱的排序。
+
+#### Go Memory Model：跨 Goroutine 的讀寫需要同步關係
+
+[Go Memory Model](https://go.dev/ref/mem) 規範的是：在什麼條件下，一個 goroutine 的讀取能保證觀察到另一個 goroutine 的寫入。
+
+它也使用 happens-before 推理。單一 goroutine 內的先後關係，加上 channel、mutex、atomic 等操作建立的同步關係，可以串成跨 goroutine 的順序。普通變數若被多個 goroutine 存取，且至少一方會寫入，就需要適當同步；不能只靠「對方應該已經執行完了」或延遲一段時間判斷安全。
+
+Go 提供 **DRF-SC（Data-Race-Free Sequential Consistency）** 保證：沒有 data race 的程式，其結果可以用保留各 goroutine 順序的交錯執行解釋。這不表示所有共享存取天然安全；消除 data race 是取得這項保證的前提。
+
+[sync/atomic 文件](https://pkg.go.dev/sync/atomic#pkg-overview) 明確說明兩件事：
+
+1. 如果 atomic 操作 B 觀察到 atomic 操作 A 的效果，A 就 synchronizes before B。
+2. 程式中所有 atomic 操作的行為，如同依某個 sequentially consistent 次序執行。
+
+因此，前面的資料發布可以寫成：
+
+```go
+var data int
+var ready atomic.Bool
+
+// 發布端：只發布一次
+func publish() {
+    data = 42
+    ready.Store(true)
+}
+
+// 接收端
+func receive() int {
+    if ready.Load() {
+        return data // 保證得到 42
+    }
+    return 0 // 這次檢查尚未收到通知
+}
+```
+
+這裡同樣假設初始化先完成，沒有其他地方修改 data 或重設 ready，接收端讀到這次 Store 寫入的 true 時，data 的寫入就透過同步關係 happens-before 後面的讀取。
+
+這個 Go 範例刻意只檢查一次，如果需求是等待通知，實務上可以使用 channel 等等待機制，避免為了示範同步而讓 goroutine 持續空轉。
+
+Go 的 `ready.Store`／`ready.Load` 在此提供的不只是 C++ release／acquire 配對所需的資料發布保證，還有 SC 的共同次序。例如將先前 x、y 的四次存取全部改用 Go atomic Store／Load，也會排除兩邊都讀到 0 的結果。
+
+## wait-free & lock-free
+
+atomic 指令可作為 [wait-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom) 和 [lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom) 演算法的基礎：
+
+- wait-free 每個操作都能在有限的自身步驟內完成
+
+	指無論作業系統如何排程，**每個**執行緒始終有進展，也就是說其他執行緒即使很慢、暫停，或持續與自己競爭，也不會使這次操作無限延後。
+
+- lock-free 保證整體持續有操作完成
+
+	規範則較前者弱，指無論作業系統如何排程，至少有**一個**執行緒有進展，整體持續前進，個別呼叫卻可能一直無法完成，例如使用 CAS 更新計數器為例：
+
+	```go
+	func Increment(counter *atomic.Uint64) {
+	    for {
+	        old := counter.Load()
+	        if counter.CompareAndSwap(old, old+1) {
+	            return
+	        }
+	    }
+	}
+	```
+
+:::warning
+也許直覺上會覺得 lock-free 或 wait-free 演算法會比 lock 還快，但事實可能恰好相反，因為：
+- lock-free 和 wait-free 必須處理更多更複雜的 race condition 和 ABA problem，完成相同目的的程式碼比用 lock 更複雜。
+- 使用 mutex 出現競爭時會讓嘗試獲取 lock 的 thread 進入睡眠，使拿到 lock 的 thread 很快地獨占完成一系列流程，吞吐量反而因此提高。
+:::
+
+mutex 導致效能下降的因素，往往是因為：
+1. 臨界區過長且過於頻繁
+2. 競爭過於激烈（context switch 開銷大幅增加）
+
+lock-free/wait-free 演算法的價值在於，其保證一個或所有執行緒始終有進展。
+
+### Single Producer Single Consumer, SPSC
+
+前面的 Ring Buffer 無法安全地被多個 goroutine 同時存取，而這裡我們將條件限制為 Single Producer、Single Consumer（SPSC）：
+
+- 只有一個 Producer 呼叫 Enqueue
+- 只有一個 Consumer 呼叫 Dequeue
+- Producer 與 Consumer 可以同時執行
+
+Producer 不需要和其他 producer 競爭寫入位置，consumer 也不需要和其他 consumer 競爭讀取位置，但兩邊仍然需要讀取對方更新的索引，所以 head 與 tail 使用 `atomic.Uint64`，建立資料交接所需的同步關係。
+
+```go:collapsed-lines=50 title="spsc_ring_buffer.go"
+var (
+	ErrFull  = errors.New("ring buffer full")
+	ErrEmpty = errors.New("ring buffer empty")
+)
+
+type SPSCRingBuffer[T any] struct {
+	data []T
+	size uint64
+
+	_ cpu.CacheLinePad // 與前面的 metadata 隔開
+
+	head atomic.Uint64
+
+	_ cpu.CacheLinePad // 避免 head & tail 的 false sharing
+
+	tail atomic.Uint64
+
+	_ cpu.CacheLinePad // 與其他資料隔開
+}
+
+func NewSPSCRingBuffer[T any](size int) (*SPSCRingBuffer[T], error) {
+	if size < 2 {
+		return nil, errors.New("size must be at least 2")
+	}
+
+	return &SPSCRingBuffer[T]{
+		data: make([]T, size),
+		size: uint64(size),
+	}, nil
+}
+
+// 僅能由單一 Producer 呼叫
+
+func (r *SPSCRingBuffer[T]) Enqueue(v T) error {
+	tail := r.tail.Load()
+	nextTail := (tail + 1) % r.size
+
+	if nextTail == r.head.Load() {
+		return ErrFull
+	}
+
+	r.data[tail] = v
+
+	// 寫好資料後，才發布新的 tail
+	r.tail.Store(nextTail)
+
+	return nil
+}
+
+// 僅能由單一 Consumer 呼叫
+
+func (r *SPSCRingBuffer[T]) Dequeue() (T, error) {
+	var zero T
+	head := r.head.Load()
+
+	if head == r.tail.Load() {
+		return zero, ErrEmpty
+	}
+
+	value := r.data[head]
+	r.data[head] = zero
+
+	// 讀取與清理完成後，才允許 producer 重用
+	r.head.Store((head + 1) % r.size)
+
+	return value, nil
+}
+```
+
+
+### Single Producer Multiple Consumer, SPMC
+
+當有多個 consumer 時，就需要特別避免 consumer 讀取同一個資料導致的問題，不能僅僅把 Store 改成 CAS，否則會有一些問題：
+
+假設 2 個 consumer 都讀取到 `head=0`
+```:no-line-numbers
+A：讀取 data[0]
+B：讀取 data[0]
+
+A：CAS head，成功
+B：CAS head，失敗，重試
+```
+
+看起來可以透過 CAS 決定誰拿到資料，但有個問題：
+
+```:no-line-numbers
+A：讀取 head = 0，接著暫停
+B：讀取資料，CAS 成功，推進 head
+Producer：繞回並覆寫 data[0]
+A：恢復，讀取 data[0]
+```
+
+A 即使最後 CAS 失敗，**它先前對普通 data[0] 的讀取，仍可能與 producer 的覆寫形成 data race**。
+
+反過來，先 CAS 再讀也不行：
+```:no-line-numbers
+A：CAS 成功，推進 head，但尚未讀取資料
+Producer：看到新 head，以為位置可重用
+Producer：覆寫資料
+A：讀到被覆寫的內容
+```
+
+因此，需要額外的方法保護資料的生命週期：
+
+1. 每個位置保存 `atomic.Pointer`，指向發布後不再修改的資料。
+2. Consumer 先取得資料指標，再用 CAS 決定是否成功取走這筆資料。
+
+```go:collapsed-lines=50 title="spmc_ring_buffer.go"
+var (
+	ErrFull  = errors.New("ring buffer full")
+	ErrEmpty = errors.New("ring buffer empty")
+)
+
+type entry[T any] struct {
+	value T // 發布後不可修改
+}
+
+type SPMCRingBuffer[T any] struct {
+	data []atomic.Pointer[entry[T]] // Producer 替換陣列中的指標、consumer 同時讀取指標時，避免一般讀寫產生 data race
+	size uint64
+
+	_    cpu.CacheLinePad
+	head atomic.Uint64
+	_    cpu.CacheLinePad
+	tail atomic.Uint64
+	_    cpu.CacheLinePad
+}
+
+func NewSPMCRingBuffer[T any](size int) (*SPMCRingBuffer[T], error) {
+	// 使用 2 的次方，讓 uint64 計數器溢位時，實體索引仍能維持正確的循環到 0。
+	if size < 2 || size&(size-1) != 0 {
+		return nil, errors.New("size must be a power of two and at least 2")
+	}
+
+	return &SPMCRingBuffer[T]{
+		data: make([]atomic.Pointer[entry[T]], size),
+		size: uint64(size),
+	}, nil
+}
+
+// 僅能由一個 Producer 呼叫
+
+func (r *SPMCRingBuffer[T]) Enqueue(v T) error {
+	head := r.head.Load()
+	tail := r.tail.Load()
+
+	// 保留一格不用
+	if tail-head >= r.size-1 {
+		return ErrFull
+	}
+
+	// tail 會一直 +1，存 tail 時不做 % r.size，讀的時候才做
+	// 主要是配合 head 的邏輯
+	r.data[tail%r.size].Store(&entry[T]{value: v})
+
+	// 指標與物件準備好後，才更新 tail
+	r.tail.Store(tail + 1)
+	return nil
+}
+
+func (r *SPMCRingBuffer[T]) Dequeue() (T, error) {
+	var zero T
+
+	for {
+		head := r.head.Load()
+
+		if head == r.tail.Load() {
+			return zero, ErrEmpty
+		}
+
+		// head 也會一直 +1，存 head 時不做 % r.size，讀的時候才做
+		// 這樣 head 可以到 2^64，做 CAS 時比較不會有 ABA Problem
+		item := r.data[head%r.size].Load()
+
+		// dequeue 後，不再清空原位置，因為 producer 可能已經覆寫
+
+		// head 與前面到 head 的值一樣才替換，表示沒人讀過
+		if r.head.CompareAndSwap(head, head+1) {
+			return item.value, nil
+		}
+
+		// 有其他 consumer 搶先完成，重新讀取進度。
+	}
+}
+
+```
+
+3 個改變：
+1. CAS 決定哪個 consumer 取得這筆資料。
+	1. A、B 都讀到 head = 10
+	2. A：CAS 10 → 11，成功，取得第 10 筆
+	3. B：CAS 10 → 11，失敗，重試
+
+	多個 consumer 的函式可能以不同時間返回，但成功推進 head 的順序，決定它們各自取走哪筆資料。
+
+2. atomic.Pointer 與不可變物件，處理覆寫競爭
+	Producer 重用陣列位置時，是**換成另一個物件的指標，不會修改 consumer 已取得的舊物件**。<br>
+	另外<span class="text-red">指標本身的並行存取則透過 atomic.Pointer 同步</span>。
+
+	Dequeue 後 consumer 也不清空原位置的資料，因為 producer 可能已經覆寫。
+
+3. head 不再只保存取餘後的陣列索引
+
+	如果 head 只有 0 -> 1 -> 2 -> 0，暫停的 consumer 可能把後來的 0 誤認成之前的 0，讓 CAS 錯誤成功（ABA Problem）。
+
+
+這裡比較難理解的應該是 data 改用 `atomic.Pointer`，畢竟當 consumer 讀取後，是透過 CAS 決定要不要 return（consume）這筆資料，以這個狀況來說：
+```:no-line-numbers
+A：讀取 head，暫停，還沒讀 data[i]
+B：讀完 data[i]，CAS 推進 head
+Producer：看到 head 前進，覆寫 data[i]
+A：恢復，才去讀 data[i]
+```
+
+B 推進 head，只能代表 B 已取得資料，不能代表 A 也已經讀完，此時 Producer 又剛好 enqueue 寫到該位置，那 Producer 與 A 因而可能對同一位置發生未同步的讀寫（Data Race），因為 A 這次讀取與 producer 的覆寫沒有 happens-before 關係。
+
+可以把 `data` 從 `atomic.Pointer` 改成 `data: []T`，enqueue、dequeue 相關的程式碼也做調整後，寫一個測試跑
+```bash
+go test -race ./spmc_ring_buffer -count=10
+```
+
+就會發現 `WARNING: DATA RACE` 報錯的行數就是 producer 寫入 data 和 consumer 讀取 data 那兩行。
+
+> A data race is defined as a write to a memory location happening concurrently with another read or write to that same location, unless all the accesses involved are atomic data accesses as provided by the sync/atomic package. 
+> -- [Go Memory Model](https://go.dev/ref/mem#overview)
+
+SPSC 雖然也會讀寫同一個位置，但 head／tail 已經保證雙方「輪流使用」。
+而 SPMC 則可能有落後的 consumer，在位置已被釋放後才去讀，重點不是**有沒有存取同一位置**，而是這些存取之間，有沒有同步建立先後關係。
+
+SPSC 有兩次交接：
+1. producer 寫完，consumer 才讀
+2. consumer 讀完，producer 才寫
+
+所以 SPSC 用普通的 data[i] 存取已經受到 happens-before 關係保護，不必再做成 atomic，而且只有一個 consumer，所以推進 head 的那個 consumer，就是完成讀取的那個 consumer。
+
+> 一個依賴全域 multi-producer/multiple-consumer (MPMC) 的程式難有好的 scalability，因為 MPMC 的極限吞吐量 (throughput) 取決於 cache coherence 的成本，而非處理器的個數! 最好是用多個 SPMC 或多個 MPSC，甚至多個 SPSC 代替，在源頭就規避掉競爭。
+> [並行程式設計: Atomics 操作](https://hackmd.io/@sysprog/concurrency-atomics#%E6%A1%88%E4%BE%8B%E6%8E%A2%E8%A8%8E-SPMC)
+
+---
+
+## Golang GMP 模型的 Local Run Queue
+
+前面提到，將所有工作集中到同一個共享 queue，容易讓競爭集中在少數共享位置，另一種設計則是將工作分散到多個 queue，讓大部分操作在本地完成，必要時再從其他 queue 取得工作。
+
+GMP 的含義：
+- G 是 goroutine
+- M 是執行緒
+- P 是執行 Go 程式碼所需的 runtime 資源，並持有 local run queue
+	- **P 不是實體 CPU 核心，也不是永遠綁定某個 M**
+
+後面帶到的程式碼都以 [1.26.0](https://github.com/golang/go/blob/go1.26.0) 為主。
+
+
+關於原始碼中的一些描述或用法如果看不太懂，可以先參考這份 [文件](https://github.com/golang/go/blob/go1.26.0/src/runtime/HACKING.md)，例如 atomic 看起來與我們使用的 atomic library 不太一樣。
+
+> The runtime uses its own atomics package at internal/runtime/atomic. This corresponds to sync/atomic, but functions have different names for historical reasons and there are a few additional functions needed by the runtime.
+
+
+### 每個 P 的工作佇列與存取角色
+Go scheduler 將 runnable goroutine 分散到各個 P 的 local run queue。操作由持有 P 的 M 執行，P 本身不是執行緒或實體核心。
+
+對同一個 local queue 而言：
+- Producer：只有 owner P 負責加入工作。
+- Consumer：owner P 會取出工作，其他 P 也能透過 work stealing 取走工作。
+
+因此，可以從 SPMC 的角度理解它：寫入端具有單一 owner，consumer 則需要協調競爭。
+
+### runqhead、runqtail 與循環陣列
+struct 定義（[source code](https://github.com/golang/go/blob/go1.26.0/src/runtime/runtime2.go#L803)）：
+```go
+
+type p struct {
+		// ...
+		runqhead uint32
+		runqtail uint32
+		runq     [256]guintptr
+}
+```
+
+- runq 保存 G 的指標表示
+- head、tail 則保存持續遞增，按 uint32 的計數器，存取陣列時才取餘。
+
+相關計算：
+- 元素數量：tail - head
+- 讀取位置：head % 256
+- 寫入位置：tail % 256
+
+因此不必保留一格：差值為 0 表示空，差值為 256 表示滿。這與前面 SPSC 使用相等的陣列索引判斷空／滿不同。
+
+### runqput 放入 G 到 local run queue
+[原始碼](https://github.com/golang/go/blob/go1.26.0/src/runtime/proc.go#L7478)
+
+```go title=src/runtime/proc.go#L7478
+
+func runqput(pp *p, gp *g, next bool) {
+	// ...
+
+	// 前面的程式碼主要是：決定要不要把新 goroutine 放到目前 P 的「下一個優先執行」位置 runnext
+	// runnext 是「優先下一個跑」的插槽；這段程式在避免它造成飢餓，並在有新 goroutine 插隊時，把舊的那個降到一般佇列。
+	// 我們重點關注下面程式
+
+	h := atomic.LoadAcq(&pp.runqhead) // load-acquire, synchronize with consumers
+	t := pp.runqtail
+	if t-h < uint32(len(pp.runq)) {
+		pp.runq[t%uint32(len(pp.runq))].set(gp)
+		atomic.StoreRel(&pp.runqtail, t+1) // store-release, makes the item available for consumption
+		return
+	}
+
+	// ...
+}
+```
+
+這裡由於**只有 owner 更新 tail**，可以直接讀取它，head 則會被其他 consumer 更新，因此使用 acquire load 觀察已提交的消費進度。
+
+`t-h` 是目前尚未取走的工作數量，小於陣列長度就代表還有空間，確認有空間後，先將 G 寫入 `t % len(pp.runq)` 對應的位置，再透過 release store 更新 tail，更新 tail 是發布資料的動作，必須放在資料寫入之後。
+
+如果 queue 已滿，則轉入 runqputslow，嘗試將部分工作連同新的 G 移往 global queue，該路徑會使用鎖，不屬於上面這段無鎖的快速路徑。
+
+### runqget 從 local run queue 獲取 G
+runqget 只由 owner P 執行，但其他 P 可能同時透過 work stealing 取走工作，因此 owner 更新 head 時仍需要 CAS。
+
+[原始碼](https://github.com/golang/go/blob/go1.26.0/src/runtime/proc.go#L7598)
+
+```go title=src/runtime/proc.go#L7598
+func runqget(pp *p) (gp *g, inheritTime bool) {
+	// ...
+
+	for {
+		h := atomic.LoadAcq(&pp.runqhead) // load-acquire, synchronize with other consumers
+		t := pp.runqtail
+		if t == h {
+			return nil, false
+		}
+		gp := pp.runq[h%uint32(len(pp.runq))].ptr()
+		if atomic.CasRel(&pp.runqhead, h, h+1) { // cas-release, commits consume
+			return gp, false
+		}
+	}
+}
+
+```
+
+先讀取 head、tail，確認 queue 非空，再取得 head 對應位置的 G 指標，與前面 SPMC 一樣，讀到指標還不代表取得這個 G，必須成功推進 head，才能回傳它。
+
+因為 head 需要與其他 consumer 協調，使用 acquire load 與 CAS。
+
+與 SPMC 的 dequeue 不同的地方：`runqget` 由 owner 執行，讀取期間不會有另一個 producer 同時寫入自己的 queue。
+
+
+### runqgrab 批次取得其他 P 的工作
+
+其他 P 偷取工作時，會透過 runqgrab 嘗試取得目標 queue 約一半的 G，而不是每次只取一筆。
+
+[原始碼](https://github.com/golang/go/blob/go1.26.0/src/runtime/proc.go#L7662)
+
+```go title=src/runtime/proc.go#L7598
+func runqgrab(pp *p, batch *[256]guintptr, batchHead uint32, stealRunNextG bool) uint32 {
+	for {
+		h := atomic.LoadAcq(&pp.runqhead) // load-acquire, synchronize with other consumers
+		t := atomic.LoadAcq(&pp.runqtail) // load-acquire, synchronize with the producer
+		n := t - h
+		n = n - n/2 // 偷 queue 一半的 G
+
+		// 省略 runnext 的部分...
+
+		for i := uint32(0); i < n; i++ {
+			g := pp.runq[(h+i)%uint32(len(pp.runq))]
+			batch[(batchHead+i)%uint32(len(batch))] = g
+		}
+		if atomic.CasRel(&pp.runqhead, h, h+n) { // cas-release, commits consume
+			return n
+		}
+	}
+}
+```
+
+1. 以 acquire load 讀取目標 queue 的 head、tail。
+2. 根據 tail - head 計算數量，取約一半，奇數時向上取整。
+3. 複製這批 G 的指標，再用一次 CAS 提交整批消費。
+
+如果 owner 或另一個偷取者先推進 head，CAS 就會失敗，本次複製的結果不能作為成功取得的工作使用。
+
+成功後，呼叫它的 `runqsteal` 會取其中一個 G 回傳供執行，將其餘工作發布到自己的 local queue，這讓一次成功的 CAS 可以取得多筆工作，減少逐筆競爭 head 的次數。
+
+
+`runqgrab` 與前面的 SPMC 一樣，可能遇到落後的 consumer 仍在讀取，但陣列位置已經被 producer 重用的情況：
+
+```:no-line-numbers
+偷取者 A：讀到 head = 10，接著暫停
+
+偷取者 B：成功取走工作，推進 head
+Owner：使用被釋放的位置，之後繞回並覆寫它
+
+偷取者 A：恢復，讀取原先的位置
+偷取者 A：CAS 舊 head，失敗，丟棄這批結果
+```
+
+這種讀寫競爭並沒有因為 head 使用 CAS 就消失。不同的是，runtime 在這裡只複製 guintptr，也就是一個機器字大小的 G 指標表示，而不是讀取任意型別的完整資料。
+
+因此 runtime 採用的是依賴底層單字存取特性，允許失敗快照被丟棄的實作方式，不是透過 CAS 讓所有普通陣列存取都變成沒有 data race。
+
+前面的泛型 SPMC 則使用 `atomic.Pointer`，讓陣列位置本身的並行讀寫也符合一般 Go atomic 的同步規則；兩者不能直接互換。Runtime 沒有使用 atomic.Pointer，不代表一般程式也可以安全省略它。
+
 
 ## References
 - [Cache 的基本原理 - 知乎](https://zhuanlan.zhihu.com/p/102293437)
 - [並行程式設計: Atomics 操作](https://hackmd.io/@sysprog/concurrency-atomics)
+- [Memory Consistency Models](https://www.opasschang.com/docs/concurrency-series-5-the-price-of-sequential-consistency)
+- [Linux Kernel Memory Barriers](https://www.kernel.org/doc/Documentation/memory-barriers.txt)
+- [Fences are memory barriers](https://www.modernescpp.com/index.php/fences-as-memory-barriers/)
