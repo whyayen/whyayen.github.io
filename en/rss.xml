@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="utf-8"?><?xml-stylesheet type="text/xsl" href="https://blog.giiin.dev/en/rss.xsl"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <atom:link href="https://blog.giiin.dev/en/rss.xml" rel="self" type="application/rss+xml"/>
+    <title>Gin&amp;apos;s Blog</title>
+    <link>https://blog.giiin.dev/en/</link>
+    <description>Gin&amp;apos;s Blog</description>
+    <language>en-US</language>
+    <pubDate>Fri, 30 Oct 2026 06:13:30 GMT</pubDate>
+    <lastBuildDate>Fri, 30 Oct 2026 06:13:30 GMT</lastBuildDate>
+    <generator>@vuepress/plugin-feed</generator>
+    <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
+    <item>
+      <title>Understanding the Processor&amp;apos;s Local Run Queue in Go&amp;apos;s GMP Model Through Ring Buffers</title>
+      <link>https://blog.giiin.dev/en/posts/2026/how_golang_implement_ring_buffer_with_atomic/how_golang_implement_ring_buffer_with_atomic.html</link>
+      <guid>https://blog.giiin.dev/en/posts/2026/how_golang_implement_ring_buffer_with_atomic/how_golang_implement_ring_buffer_with_atomic.html</guid>
+      <source url="https://blog.giiin.dev/en/rss.xml">Understanding the Processor&amp;apos;s Local Run Queue in Go&amp;apos;s GMP Model Through Ring Buffers</source>
+      <description>Understanding the Processor&amp;apos;s Local Run Queue in Go&amp;apos;s GMP Model Through Ring Buffers
+Introduction
+This article is mainly my notes from studying Concurrent Programming: Atomic Op...</description>
+      <pubDate>Fri, 30 Oct 2026 00:00:00 GMT</pubDate>
+      <content:encoded><![CDATA[
+<h2>Introduction</h2>
+<p>This article is mainly my <strong>notes</strong> from studying <a href="https://hackmd.io/@sysprog/concurrency-atomics#%E8%BB%9F%E9%AB%94%E8%A7%80%E9%BB%9E" target="_blank" rel="noopener noreferrer">Concurrent Programming: Atomic Operations</a>. If you want to learn the ideas below, I recommend reading the full course material. This article covers ring buffers, atomics, memory barriers, cache coherence, false sharing, and lock-free algorithms. It also looks at how Go uses a lock-free ring buffer for the local run queue of a Processor in the GMP model.</p>
+
+<h2>Ring Buffer</h2>
+<p>There are two basic ways to implement a ring buffer:</p>
+<ol>
+<li>Use an extra variable to store the current number of items.
+<ul>
+<li><code>buf.head == buf.tail</code> can mean either empty or full, so we need a <code>count</code> variable to tell the buffer's state.</li>
+</ul>
+</li>
+<li>Leave one slot unused.
+<ul>
+<li>Full: <code>(buf.tail + 1) % buf.size == buf.head</code></li>
+<li>Empty: <code>buf.head == buf.tail</code></li>
+<li>Using one less variable can make a lock-free design easier.</li>
+</ul>
+</li>
+</ol>
+<p>Here is the first method:</p>
+<div class="language-go line-numbers-mode has-collapsed-lines collapsed" data-highlighter="shiki" data-ext="go" style="--vp-collapsed-lines:16;--shiki-light:#1f2328;--shiki-dark:#e6edf3;--shiki-light-bg:#ffffff;--shiki-dark-bg:#0d1117"><pre class="shiki shiki-themes github-light-default github-dark-default vp-code"><code class="language-go"><span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">var</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	ErrFull  </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> errors.</span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">New</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">(</span><span style="--shiki-light:#0A3069;--shiki-dark:#A5D6FF">"ring buffer full"</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">)</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	ErrEmpty </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> errors.</span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">New</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">(</span><span style="--shiki-light:#0A3069;--shiki-dark:#A5D6FF">"ring buffer empty"</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">)</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">type</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> any</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">] </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">struct</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> {</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	data  []</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	head  </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">int</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	tail  </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">int</span></span>
+<span class="line highlighted"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	count </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">int</span><span style="--shiki-light:#6E7781;--shiki-dark:#8B949E"> // Tracks whether the buffer is empty or full</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	size  </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">int</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">func</span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF"> NewRingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> any</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">](</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">size</span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72"> int</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">*</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">] {</span></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	return</span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72"> &#x26;</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">]{</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">		data: </span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">make</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">([]</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">, size),</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">		size: size,</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	}</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">func</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">r </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">*</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">]) </span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">Enqueue</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">(</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">v</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">error</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> {</span></span>
+<span class="line"><span style="--shiki-light:#6E7781;--shiki-dark:#8B949E">	// The buffer is full when the number of items equals size.</span></span>
+<span class="line highlighted"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	if</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.count </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">==</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.size {</span></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">		return</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> ErrFull</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	r.data[r.tail] </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> v</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	r.tail </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (r.tail </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">+</span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF"> 1</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">%</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.size</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	r.count</span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">++</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	return</span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF"> nil</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">func</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">r </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">*</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">]) </span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">Dequeue</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">() (</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">, </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">error</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) {</span></span>
+<span class="line"><span style="--shiki-light:#6E7781;--shiki-dark:#8B949E">	// The buffer is empty when it has no items.</span></span>
+<span class="line highlighted"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	if</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.count </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">==</span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF"> 0</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> {</span></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">		return</span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72"> *</span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">new</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">(</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">), ErrEmpty</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	v </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">:=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.data[r.head]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	r.head </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (r.head </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">+</span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF"> 1</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">%</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.size</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	r.count</span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">--</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	return</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> v, </span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF">nil</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">}</span></span></code></pre>
+<div class="line-numbers" aria-hidden="true" style="counter-reset:line-number 0"><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div></div><div class="collapsed-lines"></div></div><p>The second method leaves one slot unused and does not need a <code>count</code> variable:</p>
+<div class="language-go line-numbers-mode has-collapsed-lines collapsed" data-highlighter="shiki" data-ext="go" style="--vp-collapsed-lines:12;--shiki-light:#1f2328;--shiki-dark:#e6edf3;--shiki-light-bg:#ffffff;--shiki-dark-bg:#0d1117"><pre class="shiki shiki-themes github-light-default github-dark-default vp-code"><code class="language-go"><span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">var</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	ErrFull  </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> errors.</span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">New</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">(</span><span style="--shiki-light:#0A3069;--shiki-dark:#A5D6FF">"ring buffer full"</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">)</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	ErrEmpty </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> errors.</span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">New</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">(</span><span style="--shiki-light:#0A3069;--shiki-dark:#A5D6FF">"ring buffer empty"</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">)</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">type</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> any</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">] </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">struct</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> {</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	data  []</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	head  </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">int</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	tail  </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">int</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	count </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">int</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	size  </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">int</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">func</span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF"> NewRingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> any</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">](</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">size</span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72"> int</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">*</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">] {</span></span>
+<span class="line"><span style="--shiki-light:#6E7781;--shiki-dark:#8B949E">    // One slot is left unused, so size must be at least 2.</span></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">     if</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> size </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">&#x3C;</span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF"> 2</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> {</span></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">		return</span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF"> nil</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">, errors.</span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">New</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">(</span><span style="--shiki-light:#0A3069;--shiki-dark:#A5D6FF">"size must be at least 2"</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">)</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	return</span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72"> &#x26;</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">]{</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">		data: </span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">make</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">([]</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">, size),</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">		size: size,</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	}</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">func</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">r </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">*</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">]) </span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">Enqueue</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">(</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">v</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">error</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> {</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	nextTail </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">:=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (r.tail </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">+</span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF"> 1</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">%</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.size</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6E7781;--shiki-dark:#8B949E">	// Leave one slot unused.</span></span>
+<span class="line highlighted"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	if</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> nextTail </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">==</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.head {</span></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">		return</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> ErrFull</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	r.data[r.tail] </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> v</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	r.tail </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> nextTail</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	return</span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF"> nil</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">func</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">r </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">*</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">]) </span><span style="--shiki-light:#8250DF;--shiki-dark:#D2A8FF">Dequeue</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">() (</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">, </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">error</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) {</span></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	var</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> zero </span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span></span>
+<span class="line"></span>
+<span class="line highlighted"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	if</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.head </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">==</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.tail {</span></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">		return</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> zero, ErrEmpty</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	data </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">:=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.data[r.head]</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	r.data[r.head] </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> zero</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">	r.head </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">=</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> (r.head </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">+</span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF"> 1</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">) </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">%</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> r.size</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">	return</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> data, </span><span style="--shiki-light:#0550AE;--shiki-dark:#79C0FF">nil</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">}</span></span></code></pre>
+<div class="line-numbers" aria-hidden="true" style="counter-reset:line-number 0"><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div></div><div class="collapsed-lines"></div></div><p>The second version may look a little more complex, but it uses the unused slot to tell the difference between an empty and a full buffer. This avoids adding another variable, which would also need to be maintained in concurrent code.</p>
+<p>Neither version is thread-safe. A simple test with <code>go test --trace -v ring_buffer.go</code> will show many race conditions.</p>
+<p>Consider two producers calling <code>enqueue</code> at the same time, using the second version. Start with:</p>
+<div class="language-" data-highlighter="shiki" data-ext style="--shiki-light:#1f2328;--shiki-dark:#e6edf3;--shiki-light-bg:#ffffff;--shiki-dark-bg:#0d1117"><pre class="shiki shiki-themes github-light-default github-dark-default vp-code"><code class="language-"><span class="line"><span>head=0</span></span>
+<span class="line"><span>tail=0</span></span>
+<span class="line"><span>data=[_, _, _]</span></span></code></pre>
+</div><p>Thread A calls <code>enqueue(1)</code>, and Thread B calls <code>enqueue(2)</code>. Suppose they run in this order:</p>
+<div class="language-" data-highlighter="shiki" data-ext style="--shiki-light:#1f2328;--shiki-dark:#e6edf3;--shiki-light-bg:#ffffff;--shiki-dark-bg:#0d1117"><pre class="shiki shiki-themes github-light-default github-dark-default vp-code"><code class="language-"><span class="line"><span>A: reads r.tail = 0</span></span>
+<span class="line"><span>B: reads r.tail = 0</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>A: nextTail = 1</span></span>
+<span class="line"><span>B: nextTail = 1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>A: checks nextTail != head, so it can write</span></span>
+<span class="line"><span>B: checks nextTail != head, so it can write</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>A: r.data[0] = 1</span></span>
+<span class="line"><span>B: r.data[0] = 2   // Overwrites A's data</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>A: r.tail = 1</span></span>
+<span class="line"><span>B: r.tail = 1</span></span></code></pre>
+</div><p>The result is:</p>
+<div class="language-" data-highlighter="shiki" data-ext style="--shiki-light:#1f2328;--shiki-dark:#e6edf3;--shiki-light-bg:#ffffff;--shiki-dark-bg:#0d1117"><pre class="shiki shiki-themes github-light-default github-dark-default vp-code"><code class="language-"><span class="line"><span>data[0] = 2</span></span>
+<span class="line"><span>tail = 1</span></span></code></pre>
+</div><p>The value <code>1</code> is lost, but both threads think their enqueue succeeded.</p>
+<p>We could add a Mutex so only one thread can enter the critical section during enqueue or dequeue:</p>
+<div class="language-go line-numbers-mode" data-highlighter="shiki" data-ext="go" style="--shiki-light:#1f2328;--shiki-dark:#e6edf3;--shiki-light-bg:#ffffff;--shiki-dark-bg:#0d1117"><pre class="shiki shiki-themes github-light-default github-dark-default has-diff vp-code"><code class="language-go"><span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">type</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> RingBuffer</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">[</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657"> any</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">] </span><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">struct</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3"> {</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">   data  []</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">T</span></span>
+<span class="line diff add"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">   mu </span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">sync</span><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">.</span><span style="--shiki-light:#953800;--shiki-dark:#FFA657">Mutex</span></span>
+<span class="line"><span style="--shiki-light:#CF222E;--shiki-dark:#FF7B72">   ...</span></span>
+<span class="line"><span style="--shiki-light:#1F2328;--shiki-dark:#E6EDF3">}</span></span></code></pre>
+<div class="line-numbers" aria-hidden="true" style="counter-reset:line-number 0"><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div><div class="line-number"></div></div></div><p>A Mutex has clear meaning and is easy to use, but it also has some limits:</p>
+<ol>
+<li>It may not use the hardware fully. A blocked thread must spin or wait to wake up.</li>
+<li>A program may reach a deadlock.</li>
+<li>It may cause <a href="https://en.wikipedia.org/wiki/Priority_inversion" target="_blank" rel="noopener noreferrer">priority inversion</a>.</li>
+</ol>
+<p>If we want to use multiple processors well or improve scalability, we need other ways to handle these cases.</p>
+<h2>Atomic</h2>
+<p>To reduce the limits of mutexes, we could split a lock into smaller parts. For example, we can shard shared variables so each thread works on its own part. This reduces lock contention. But sharding can be too much work for some cases, such as a simple counter. It also does not fit data that should not be split, such as a global flag. In these cases, we can use atomic operations.</p>
+<blockquote>
+<p>In computer terms, an &quot;atom&quot; is something that cannot be split into smaller steps. This describes the hardware view of a processor instruction, not the software view.</p>
+<p>— <a href="https://hackmd.io/@sysprog/concurrency-atomics#%E9%98%BB%E5%A1%9E%E5%BC%8F%E5%90%8C%E6%AD%A5%E6%A9%9F%E5%88%B6" target="_blank" rel="noopener noreferrer">Concurrent Programming: Atomic Operations</a></p>
+</blockquote>
+<p>From the software view, a simple <code>counter++</code> has three steps: Load, Add, and Store. If atomicity does not make these steps happen together, two threads may load the same value, add one, and store it. The counter should become 2, but it may become 1.</p>
+<p>CPUs often provide special instructions for atomic Read-Modify-Write (RMW) operations. Two common types are:</p>
+<ol>
+<li><a href="https://en.wikipedia.org/wiki/Compare-and-swap" target="_blank" rel="noopener noreferrer">Compare-and-swap (CAS)</a> and swap (SWP)
+<ul>
+<li>SWP writes a value and returns the old value as one atomic operation.
+<ul>
+<li>ARMv5 and earlier locked the whole system bus. This caused problems on multi-core systems. ARMv6 and later replaced this with LDREX and STREX.</li>
+</ul>
+</li>
+<li>CAS changes A to B only if the current value is A. Otherwise, it does not write.
+<ul>
+<li>Examples include <code>CMPXHG</code> on x86 and ARMv8.1.</li>
+</ul>
+</li>
+<li>CAS may cause the <a href="https://en.wikipedia.org/wiki/ABA_problem" target="_blank" rel="noopener noreferrer">ABA problem</a>.</li>
+</ul>
+</li>
+<li><a href="https://en.wikipedia.org/wiki/Load-link/store-conditional" target="_blank" rel="noopener noreferrer">Load-link/store-conditional (LL/SC)</a>
+<ul>
+<li>These two instructions work as a pair to provide atomicity.
+<ul>
+<li>LL (Load-Link/Load-Reserved) reads a value and marks the address as exclusive inside the CPU.</li>
+<li>SC (Store-Conditional) tries to write a new value to the marked address. It succeeds if no one changed the address since LL, then clears the exclusive state. If the address changed, the write fails.</li>
+</ul>
+</li>
+<li>Examples include Power and ARMv6 or later, which provides LDREX and STREX.</li>
+<li>LL/SC can avoid the ABA problem.</li>
+</ul>
+</li>
+</ol>
+<h2>Cache</h2>
+<p>Early computers had slow CPUs and main memory. CPU speed later increased much faster than main memory speed. Modern computers use cache to reduce how often the CPU needs to access main memory.</p>
+<div class="hint-container info">
+<p class="hint-container-title">Info</p>
+<p>According to <a href="https://gist.github.com/jboner/2841832" target="_blank" rel="noopener noreferrer">Latency Numbers Every Programmer Should Know</a>, reading main memory takes about 100 ns, while an L1 cache read takes about 0.5 ns. That is a 200-times difference.</p>
+</div>
+<h3>Cache Parts</h3>
+<ul>
+<li>Cache Size
+<ul>
+<li>The largest amount of data that the cache can hold.</li>
+</ul>
+</li>
+<li>Cache Line
+<ul>
+<li>The cache is split into blocks of equal size. Each block is a cache line.</li>
+<li>It is the smallest unit moved between cache and main memory.</li>
+</ul>
+</li>
+</ul>
+<h3>How to Find a Cache Hit or Miss</h3>
+<p>If the CPU reads one byte from a memory address, how does it know whether the data is in cache?</p>
+<p>Suppose we have a 64-byte cache. Each cache line is 8 bytes, so there are 8 cache lines. If we read <code>0x0654</code>, the cache splits the address into three parts: Tag, Index, and Offset.</p>
+<p><img src="https://picx.zhimg.com/v2-e8deb539258684ad9d4dffef08b02c09_r.jpg" alt="Address format">
+Image source: <a href="https://zhuanlan.zhihu.com/p/102293437" target="_blank" rel="noopener noreferrer">Zhihu @smcdef</a></p>
+<ul>
+<li>Tag (2 bits)
+<ul>
+<li>The remaining high bits are the tag. First, look at Index and Offset to understand how it is calculated.</li>
+</ul>
+</li>
+<li>Index (3 bits)
+<ul>
+<li>There are 8 cache lines. We use 3 address bits (<span v-pre class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mn>8</mn><mo>=</mo><mn>3</mn></mrow><annotation encoding="application/x-tex">\log_{2}8=3</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9386em;vertical-align:-0.2441em;"></span><span class="mop"><span class="mop">lo<span style="margin-right:0.0139em;">g</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.207em;"><span style="top:-2.4559em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">2</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2441em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord">8</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.6444em;"></span><span class="mord">3</span></span></span></span>) to find the cache line, shown in yellow in the figure.</li>
+</ul>
+</li>
+<li>Offset (3 bits)
+<ul>
+<li>This finds a byte within the 8-byte line, so it needs <span v-pre class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mn>8</mn><mo>=</mo><mn>3</mn><mtext> bits</mtext></mrow><annotation encoding="application/x-tex">\log_{2}8=3\text{ bits}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9386em;vertical-align:-0.2441em;"></span><span class="mop"><span class="mop">lo<span style="margin-right:0.0139em;">g</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.207em;"><span style="top:-2.4559em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">2</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2441em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord">8</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.6944em;"></span><span class="mord">3</span><span class="mord text"><span class="mord"> bits</span></span></span></span></span>, shown in blue.</li>
+</ul>
+</li>
+</ul>
+<p>Many addresses can have the same index. The index alone cannot tell us if the data in that cache line belongs to the address we want. A tag array solves this problem. It matches the data array, and each cache line has a tag. The tag stores the address bits left after removing the index and offset, shown in green.</p>
+<p>After the index finds a cache line, the CPU compares its tag with the address tag. If they match, it is a cache hit. If they do not match, it is a cache miss.</p>
+<div class="hint-container warning">
+<p class="hint-container-title">Warning</p>
+<p>Cache size does not include the tags. It counts only the data.</p>
+</div>
+<p>Cache lines also have flags such as valid and dirty bits. A valid bit tells us whether the data in a cache line is valid. Usually, <code>1</code> means valid and <code>0</code> means invalid, so it is usually <code>0</code> after startup. The CPU checks this bit before comparing tags.</p>
+<h3>Mapping Types</h3>
+<h4>Direct Mapped</h4>
+<p>The method above is direct mapped. A modulo operation on the memory address tells us which cache line to use.</p>
+<ul>
+<li>Advantages
+<ul>
+<li>Simple and easy to calculate.</li>
+<li>Low hardware cost.</li>
+</ul>
+</li>
+<li>Disadvantages
+<ul>
+<li>Cache thrashing: addresses with a fixed offset may use the same cache line. The old line must be evicted and loaded from main memory, causing conflicts.</li>
+</ul>
+</li>
+</ul>
+<h4>N-way Set-Associative</h4>
+<p>In an N-way cache, every N cache lines form one set. We calculate which set an address belongs to, then look for an empty line in that set. If no line is empty, we evict one using a policy such as LRU, Random, or FIFO. To find data, we first find the set, then compare tags in that set.</p>
+<p>Using the same cache size of 64 bytes and line size of 8 bytes, a 2-way set-associative cache has:</p>
+<p v-pre class="katex-block"><span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mn>64</mn><mi>B</mi><mo>÷</mo><mn>8</mn><mi>B</mi><mo>=</mo><mn>8</mn><mtext> cache lines</mtext><mspace linebreak="newline"/><mn>8</mn><mtext> cache lines</mtext><mo>÷</mo><mn>2</mn><mo>=</mo><mn>4</mn><mtext> sets</mtext></mrow><annotation encoding="application/x-tex">64B \div 8B = 8 \text{ cache lines} \\
+8 \text{ cache lines} \div 2 = 4 \text{ sets}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em;"></span><span class="mord">64</span><span class="mord mathnormal" style="margin-right:0.0502em;">B</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">÷</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord">8</span><span class="mord mathnormal" style="margin-right:0.0502em;">B</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.6944em;"></span><span class="mord">8</span><span class="mord text"><span class="mord"> cache lines</span></span></span><span class="mspace newline"></span><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em;"></span><span class="mord">8</span><span class="mord text"><span class="mord"> cache lines</span></span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">÷</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.6444em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.6444em;"></span><span class="mord">4</span><span class="mord text"><span class="mord"> sets</span></span></span></span></span></span></p>
+<p>There are 4 sets. The address still has Tag, Index, and Offset. The line size is still 8 bytes, so Offset is still 3 bits. Index now needs to select one of 4 sets, so it needs <span v-pre class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mn>4</mn><mo>=</mo><mn>2</mn><mtext> bits</mtext></mrow><annotation encoding="application/x-tex">\log_{2}4 = 2 \text{ bits}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9386em;vertical-align:-0.2441em;"></span><span class="mop"><span class="mop">lo<span style="margin-right:0.0139em;">g</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.207em;"><span style="top:-2.4559em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">2</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2441em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.6944em;"></span><span class="mord">2</span><span class="mord text"><span class="mord"> bits</span></span></span></span></span>. The remaining high bits are the Tag. The address format is now <code>Tag{3 bits}-Index{2 bits}-Offset{3 bits}</code>.</p>
+<p>See the figure:
+<img src="https://pic3.zhimg.com/v2-4653656ec3d4d5942bae805df6723690_1440w.jpg" alt="2-way set-associative cache">
+Image source: <a href="https://zhuanlan.zhihu.com/p/102293437" target="_blank" rel="noopener noreferrer">Zhihu @smcdef</a></p>
+<ul>
+<li>Advantages
+<ul>
+<li>It can reduce cache thrashing. Addresses with the same index go to the same set. The cache can use any free line in that set, or evict one using a replacement policy.</li>
+</ul>
+</li>
+<li>Disadvantages
+<ul>
+<li>It costs more hardware than direct mapped.
+<ul>
+<li>The cache must compare more tags. Parallel comparisons make the hardware more complex.</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h4>Fully Associative</h4>
+<p>In a fully associative cache, all cache lines are in one set. We do not need to find a set first; we search all lines for the matching tag.</p>
+<p><img src="https://pic1.zhimg.com/v2-1e61e8d13030ed4f0b42c2d1a854ffce_1440w.jpg" alt="Fully Associative Cache">
+Image source: <a href="https://zhuanlan.zhihu.com/p/102293437" target="_blank" rel="noopener noreferrer">Zhihu @smcdef</a></p>
+<p>Since there are no separate sets, we do not need an Index. When writing, the cache can use any empty line. When reading, it checks all tags. This can reduce cache thrashing as much as possible, but it costs more hardware.</p>
+<h4>Summary</h4>
+<p>|            | Direct-Mapped | N-way Set-Associative |       Fully Associative       |
+|:</p>
+]]></content:encoded>
+      <enclosure url="https://picx.zhimg.com/v2-e8deb539258684ad9d4dffef08b02c09_r.jpg" type="image/jpeg"/>
+    </item>
+  </channel>
+</rss>
