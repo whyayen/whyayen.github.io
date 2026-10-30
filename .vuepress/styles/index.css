@@ -1,0 +1,19 @@
+/* Display shell prompts without changing the copied command text. */
+code.language-bash > .line::before,
+code.language-sh > .line::before {
+  content: '$ ';
+  user-select: none;
+}
+
+.text-red {
+  color: #e75a5a;
+  font-weight: 500;
+}
+
+.bg-red-highlight {
+  background-color: #ea5555;
+  color: #ffffff;
+  padding: 0.1em;
+  border-radius: 4px;
+  font-weight: 500;
+}
