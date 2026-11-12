@@ -1,0 +1,135 @@
+import { viteBundler } from '@vuepress/bundler-vite'
+import { defaultTheme } from '@vuepress/theme-default'
+import { defineUserConfig } from 'vuepress'
+import { googleAnalyticsPlugin } from '@vuepress/plugin-google-analytics'
+import { feedPlugin } from '@vuepress/plugin-feed'
+import { markdownMathPlugin } from '@vuepress/plugin-markdown-math'
+import { markdownFileTreePlugin } from '@vuepress/plugin-markdown-file-tree'
+import { shikiPlugin } from '@vuepress/plugin-shiki'
+
+export default defineUserConfig({
+  bundler: viteBundler(),
+  port: 8989,
+  locales: {
+    '/': {
+      lang: 'zh-TW',
+      title: 'Gin\'s Blog',
+      description: 'Gin 的部落格',
+    },
+    '/en/': {
+      lang: 'en-US',
+      title: 'Gin\'s Blog',
+      description: 'Gin\'s Blog',
+    },
+  },
+  dest: 'public',
+  head: [
+    [
+      "meta",
+      {
+        "name": "viewport",
+        "content": "width=device-width,initial-scale=1,user-scalable=no"
+      }
+    ],
+    [
+      "meta",
+      {
+        "name": "google-site-verification",
+        "content": "kWqBrWikTRDwDaEFKmjuwuEqG9EUmtlb-9UMUWvuWGo"
+      }
+      ]
+    ],
+    theme: defaultTheme({
+      editLink: false,
+      externalLinkIcon: false,
+      lastUpdated: false,
+      contributors: false,
+      locales: {
+        '/': {
+          selectLanguageName: '中文',
+          selectLanguageText: '語言',
+          navbar: [
+            { text: '首頁', link: '/' },
+            { text: 'RSS', link: 'https://blog.giiin.dev/rss.xml', external: true },
+          ],
+        },
+        '/en/': {
+          selectLanguageName: 'English',
+          selectLanguageText: 'Languages',
+          navbar: [
+            { text: 'Home', link: '/en/' },
+            { text: 'RSS', link: 'https://blog.giiin.dev/en/rss.xml', external: true },
+          ],
+        },
+      },
+      sidebar: false,
+      themePlugins: {
+        activeHeaderLinks: false,
+        prismjs: false
+      }
+    }),
+    plugins: [
+    googleAnalyticsPlugin({
+      id: 'GTM-NXX4FQ7',
+    }),
+    {
+      name: 'article-toc',
+      extendsPage(page) {
+        if (/^(?:en\/)?posts\//.test(page.filePathRelative ?? '') && !page.frontmatter.home) {
+          page.data.articleHeaders = page.headers
+        }
+      }
+    },
+    {
+      name: 'aggregate-posts',
+      onPrepared: async (app) => {
+        const posts = app.pages
+          .filter(page => page.path.includes('/posts/') && page.path.endsWith('.html'))
+          .map(page => ({
+            title: page.title,
+            path: page.path,
+            date: page.frontmatter.date || '',
+            category: page.frontmatter.categories?.[0] ?? '',
+            description: page.frontmatter.description || '',
+            pinned: page.frontmatter.pinned === true,
+            lang: page.lang
+          }))
+          .sort((a, b) => {
+            if (a.pinned !== b.pinned) return Number(b.pinned) - Number(a.pinned)
+            const dateA = new Date(a.date || 0)
+            const dateB = new Date(b.date || 0)
+            return dateB - dateA
+          })
+
+        await app.writeTemp('postsData.js', `export const posts = ${JSON.stringify(posts)}`)
+      }
+    },
+    feedPlugin({
+      hostname: 'https://blog.giiin.dev',
+      rss: true,
+      atom: true,
+      json: true,
+      count: 20, // 限制 RSS Feed 僅抓取前 20 篇
+      dev: true,
+      filter: ({ filePathRelative }) =>
+        filePathRelative &&
+        filePathRelative.includes('posts/') &&
+        !filePathRelative.endsWith('README.md')
+    }),
+    markdownMathPlugin({
+      type: 'katex',
+      copy: true
+    }),
+    markdownFileTreePlugin(),
+    shikiPlugin({
+      langs: ['js', 'json', 'go', 'md', 'bash', 'diff', 'yaml', 'ruby'],
+      themes: { light: 'github-light-default', dark: 'github-dark-default' },
+      collapsedLines: false,
+      notationDiff: true,
+      notationFocus: true,
+      notationHighlight: true,
+      notationErrorLevel: true,
+      lineNumbers: true,
+    }),
+  ]
+})
