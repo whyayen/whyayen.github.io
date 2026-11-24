@@ -41,7 +41,7 @@ CREATE USER 'username'@'localhost' IDENTIFIED BY 'user_password';
 ```
 
 - `username`: 自行替換為你想要的使用者名稱
-- `localhost`: 此處為 host，如果值為 `localhost` 表示僅允許這個使用者在這台機器上做連線，其他主機不行（SSH 除外），如果要外部連線，請設想連線主機的 IP，或也可以使用 `%` 代表任何主機都可以進行連線，請謹慎使用 `%`，盡量將權限、可連線的來源最小化。
+- `localhost`: 此處為 host，如果值為 `localhost` 表示僅允許這個使用者在這台機器上做連線，其他主機不行（SSH 除外），如果要外部連線，請設想連線主機的 IP，或也可以使用 `%` 代表任何主機都可以進行連線，請謹慎使用 `%`，盡量將權限、可連線的來源最小化。
 - `user_password`: 使用者密碼
 
 ## Step 4. Grant privileges

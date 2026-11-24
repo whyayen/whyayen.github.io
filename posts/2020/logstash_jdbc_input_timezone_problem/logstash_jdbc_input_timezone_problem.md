@@ -53,5 +53,5 @@ default-time-zone = "+00:00"
 3. Restart MySQL
 
 
-## 結論
+## 結論
 因為時區基本上會透過 Rails 轉成 UTC 存在 DB，所以我們最終選擇使用方法二，直接修改 MySQL default timezone，因為沒使用什麼時間函數，所以沒什麼影響，如果要直接改 DB 時間，可能需確認是否會影響 Application 本身。然後 sync 到 Elasticsearch 的資料，舊的有時間差的資料，我們就沒進行處理了，畢竟四個小時後就沒影響。

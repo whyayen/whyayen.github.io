@@ -12,7 +12,7 @@ categories:
 ## 前言
 最近開發一個功能是將 ActiveStorage 上傳至 S3 的檔案，進行轉檔後，在將轉完的檔案 attach 回該 record，假設有一個 model 叫做 `User`，並且有兩個 ActiveStorage `has_one_attached` 的欄位，一個是 `original_file`，另一個 `converted_file`，我可以透過 `User.original_file` 及 `User.converted_file` 抓到原始及轉檔後的檔案。
 
-透過 ActiveStorage 上傳檔案到 GCP、S3 很簡單，官方文件寫的很清楚，但如果你的檔案是透過其他服務（轉檔服務）等放到 S3，而不是透過你本身的 Application 上傳，要如何把已經在 S3 的檔案關聯回 record 呢？下面透過 ActiveStorage source code 一步一步說明如何達到此需求。
+透過 ActiveStorage 上傳檔案到 GCP、S3 很簡單，官方文件寫的很清楚，但如果你的檔案是透過其他服務（轉檔服務）等放到 S3，而不是透過你本身的 Application 上傳，要如何把已經在 S3 的檔案關聯回 record 呢？下面透過 ActiveStorage source code 一步一步說明如何達到此需求。
 
 ## ActiveStorage 原理
 在 [ActiveStorage 文件](https://edgeguides.rubyonrails.org/active_storage_overview.html)中，並沒有提到如何把已經在 S3 的檔案，在綁回 model 中 ActiveStorage 的欄位，雖然在 StackOverflow 有找到解答，但並不清楚 ActiveStorage 的運作方式，所以也不明白為何要這麼寫，因此了解 ActiveStorage 的原理才能知道為何要這麼寫！
@@ -103,12 +103,12 @@ end
 簡單來說就是上傳前我們會對檔案做計算，會產生一組 MD5 的 hash，上傳時會把 `checksum` 也給 S3，S3 收到檔案後一樣會做計算，如果與 `checksum` 不同，則會 raise `Aws::S3::Errors::BadDigest`，以此去避免檔案內容損壞、竄改。
 
 可參考：
-- [S3 v2 SDK for ruby - #put](https://docs.aws.amazon.com/sdk-for-ruby/v2/api/Aws/S3/Object.html#put-instance_method)
+- [S3 v2 SDK for ruby - #put](https://docs.aws.amazon.com/sdk-for-ruby/v2/api/Aws/S3/Object.html#put-instance_method)
 - [How can I check the integrity of an object uploaded to Amazon S3?](https://aws.amazon.com/tw/premiumsupport/knowledge-center/data-integrity-s3/)
 
 ### 建立檔案已經在 S3 上的 Blob
 
-雖然 ActiveStorage 的 Tutorial 內沒寫，不過在 API Docs 跟 ActiveStorage Source Code 有說明如何建立一個已經上傳的 Blob。
+雖然 ActiveStorage 的 Tutorial 內沒寫，不過在 API Docs 跟 ActiveStorage Source Code 有說明如何建立一個已經上傳的 Blob。
 
 [activestorage/app/models/active_storage/blob.rb#L3](https://github.com/rails/rails/blob/v5.2.0/activestorage/app/models/active_storage/blob.rb#L3)
 ```ruby
