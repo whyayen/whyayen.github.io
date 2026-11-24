@@ -1,0 +1,1 @@
+var e=`/assets/cache_coherence-C2Y2kIox.png`,t=`/assets/system_bus-fznfLdJy.png`,n=`/assets/store_buffer-lLyLz439.png`,r=`/assets/invalidate_queue-BFYiz9XN.png`,i=`/assets/acquire_release_fence-CkxuWnB3.png`;export{e as a,t as i,r as n,n as r,i as t};
